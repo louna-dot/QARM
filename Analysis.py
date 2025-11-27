@@ -70,18 +70,54 @@ def load_data(tickers, start_date):
         if (actual_start - user_start).days > 5:
             warning_msg = f"⚠️ Data availability limited. Start date adjusted from {user_start.date()} to {actual_start.date()}."
 
-        data = data.loc[first_valid:].ffill().bfill()
+        def load_data(tickers, start_date, rebalance_freq="M"):
+    end_date = datetime.now().strftime('%Y-%m-%d')
+    try:
+        data = yf.download(tickers, start=start_date, end=end_date)['Close']
+        if data is None or data.empty: return None, None, None, None, None
         
-        monthly_returns = data.resample('M').last().pct_change().dropna()
-        if monthly_returns.empty: return None, None, None, None, None
+        data = data.dropna(axis=1, how='all')
+        if data.empty: return None, None, None, None, None
 
-        mu = monthly_returns.mean() * 12
-        Sigma = monthly_returns.cov() * 12 
+        if isinstance(data, pd.Series):
+            data = data.to_frame()
+
+        # Date Handling
+        first_valid = data.apply(lambda col: col.first_valid_index()).max()
+        user_start = pd.to_datetime(start_date).tz_localize(None)
+        actual_start = pd.to_datetime(first_valid).tz_localize(None)
         
-        return monthly_returns, mu, Sigma, first_valid.strftime('%Y-%m-%d'), warning_msg
+        warning_msg = None
+        if (actual_start - user_start).days > 5:
+            warning_msg = (
+                f"⚠️ Data availability limited. "
+                f"Start date adjusted from {user_start.date()} to {actual_start.date()}."
+            )
+
+        data = data.loc[first_valid:].ffill().bfill()
+
+        # >>> rebalancing / fréquence d’échantillonnage <<<
+        returns = data.resample(rebalance_freq).last().pct_change().dropna()
+        if returns.empty: return None, None, None, None, None
+
+        # Annualisation cohérente avec la fréquence
+        if rebalance_freq == "M":    # monthly
+            ann_factor = 12
+        elif rebalance_freq == "Q":  # quarterly
+            ann_factor = 4
+        elif rebalance_freq == "Y":  # yearly
+            ann_factor = 1
+        else:
+            ann_factor = 12  # fallback
+
+        mu = returns.mean() * ann_factor
+        Sigma = returns.cov() * ann_factor
+        
+        return returns, mu, Sigma, first_valid.strftime('%Y-%m-%d'), warning_msg
 
     except Exception as e:
         return None, None, None, None, None
+        
 
 def calculate_portfolio_vol(weights, cov_matrix):
     return np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights)))
@@ -164,27 +200,119 @@ def generate_efficient_frontier(mu, sigma, n_portfolios=2000):
 # 3. SIDEBAR CONTROLS
 # ==========================================
 
-st.sidebar.header("1. Strategy Selection")
-strategy_choice = st.sidebar.selectbox("Allocation Model:", [
-    "Equal Risk Contribution (ERC)", "Most Diversified Portfolio (MDP)", 
-    "Minimum Expected Shortfall (ES)", "Target Volatility (MVO)", "Equal Weight (Benchmark)"
-])
+# ==========================================
+# 3. SIDEBAR CONTROLS – INVESTOR VIEW
+# ==========================================
 
-with st.sidebar.expander("🛠️ Portfolio Settings", expanded=True):
+st.sidebar.header("1. Investor Profile")
+
+# Montant investi
+investment_amount = st.sidebar.number_input(
+    "Investment amount (base currency)",
+    min_value=0.0,
+    value=1_000_000.0,
+    step=50_000.0,
+    format="%.0f"
+)
+
+# Profil de risque
+risk_profile = st.sidebar.radio(
+    "Risk level",
+    options=["Conservative", "Balanced", "Aggressive"],
+    index=1
+)
+
+# Horizon de placement
+time_horizon_years = st.sidebar.slider(
+    "Investment horizon (years)",
+    min_value=1,
+    max_value=40,
+    value=15
+)
+
+# Mapping profil de risque → stratégie par défaut
+strategy_options = [
+    "Equal Risk Contribution (ERC)",
+    "Most Diversified Portfolio (MDP)",
+    "Minimum Expected Shortfall (ES)",
+    "Target Volatility (MVO)",
+    "Equal Weight (Benchmark)"
+]
+default_strategy_index = {
+    "Conservative": 0,   # ERC
+    "Balanced": 1,       # MDP
+    "Aggressive": 3      # Target Vol
+}[risk_profile]
+
+st.sidebar.header("2. Strategy Selection")
+strategy_choice = st.sidebar.selectbox(
+    "Allocation model:",
+    strategy_options,
+    index=default_strategy_index
+)
+
+with st.sidebar.expander("🛠️ Portfolio & Data Settings", expanded=True):
+
+    # Classes d’actifs haut niveau pour filtrer l’univers (optionnel)
+    asset_class_choices = ["Equities", "Bonds", "Commodities", "Real Estate", "Crypto"]
+    selected_asset_classes = st.multiselect(
+        "Asset classes to include",
+        options=asset_class_choices,
+        default=asset_class_choices[:-1]  # par défaut sans Crypto
+    )
+
+    # Universe de tickers (toujours modifiable manuellement)
     default_tickers = "SPY, TLT, GLD, VNQ, QQQ, EEM, EMB"
     ticker_input = st.text_input("Assets (comma separated)", value=default_tickers)
     tickers = [x.strip().upper() for x in ticker_input.split(',') if x.strip()]
-    
-    # Default date to Jan 3rd to avoid holiday warnings
-    start_date = st.date_input("Start Date", value=pd.to_datetime("2018-01-03"))
-    max_weight = st.slider("Max Weight per Asset", 0.1, 1.0, 1.0, 0.05)
-    
+
+    # Fréquence de rebalancement
+    rebalance_label = st.selectbox(
+        "Rebalancing frequency",
+        options=["Monthly", "Quarterly", "Yearly"],
+        index=0
+    )
+    rebalance_map = {"Monthly": "M", "Quarterly": "Q", "Yearly": "Y"}
+    rebalance_freq = rebalance_map[rebalance_label]
+
+    # Horizon → période de backtest
+    end_date = datetime.now().date()
+    start_date = (pd.to_datetime(end_date) - pd.DateOffset(years=time_horizon_years)).date()
+    st.caption(f"Backtest period: {start_date} → {end_date}")
+
+    # Max weight par titre (plus strict si profil prudent)
+    default_max_weight = {
+        "Conservative": 0.25,
+        "Balanced": 0.35,
+        "Aggressive": 0.50
+    }[risk_profile]
+    max_weight = st.slider(
+        "Max weight per asset",
+        0.05, 1.0, float(default_max_weight), 0.05
+    )
+
+    # Paramètres spécifiques aux stratégies
     target_vol_input = 0.10
     alpha_input = 0.95
+
     if strategy_choice == "Target Volatility (MVO)":
-        target_vol_input = st.slider("Target Volatility", 0.05, 0.25, 0.10)
+        # cible de volatilité selon profil de risque
+        default_tv = {
+            "Conservative": 0.08,
+            "Balanced": 0.12,
+            "Aggressive": 0.18
+        }[risk_profile]
+        target_vol_input = st.slider(
+            "Target volatility (annualised)",
+            0.05, 0.30, float(default_tv), 0.01
+        )
+
     elif strategy_choice == "Minimum Expected Shortfall (ES)":
-        alpha_input = st.slider("Confidence Level (α)", 0.90, 0.99, 0.95)
+        alpha_input = st.slider(
+            "Confidence level (α)",
+            0.90, 0.99, 0.95
+        )
+
 
 # ==========================================
 # 4. MAIN EXECUTION
@@ -198,7 +326,11 @@ if len(tickers) < 2:
 
 with st.spinner("Fetching data and optimizing..."):
     # 1. Load Data
-    returns_df, mu, Sigma, valid_start, date_warning = load_data(tickers, start_date)
+    returns_df, mu, Sigma, valid_start, date_warning = load_data(
+        tickers, 
+        start_date,
+        rebalance_freq=rebalance_freq
+    )
 
     if returns_df is None:
         st.error(f"Could not download data. Please check tickers.")
@@ -206,6 +338,27 @@ with st.spinner("Fetching data and optimizing..."):
         
     # 2. Asset Classification
     asset_info_dict = get_asset_info(tickers)
+if selected_asset_classes:
+    filtered_tickers = [
+        t for t in tickers
+        if any(cls in asset_info_dict.get(t, "") for cls in selected_asset_classes)
+    ]
+else:
+    filtered_tickers = tickers
+
+if len(filtered_tickers) < 2:
+    st.error("Please select at least 2 assets in the chosen asset classes.")
+    st.stop()
+
+# puis utiliser filtered_tickers partout à la place de tickers
+returns_df, mu, Sigma, valid_start, date_warning = load_data(
+    filtered_tickers, start_date, rebalance_freq=rebalance_freq
+)
+asset_info_dict = get_asset_info(filtered_tickers)
+# ...
+opt_weights = run_optimization(..., tickers=filtered_tickers, ...)
+# et pour les DataFrames / graphes : filtered_tickers
+
 
     # 3. Date Warning
     if date_warning:
@@ -236,7 +389,12 @@ st.divider()
 
 # --- A. Asset Class Breakdown (Pie Chart) ---
 st.subheader("1. Composition by Asset Class")
-alloc_df = pd.DataFrame({'Asset': tickers, 'Weight': opt_weights, 'Category': [asset_info_dict.get(t, "Other") for t in tickers]})
+alloc_df = pd.DataFrame({
+    'Asset': tickers,
+    'Weight': opt_weights,
+    'Notional': opt_weights * investment_amount,
+    'Category': [asset_info_dict.get(t, "Other") for t in tickers]
+})
 alloc_df_filtered = alloc_df[alloc_df['Weight'] > 0.001]
 
 # --- DEFINE COLORS & ADAPTIVE SCALE ---
@@ -288,8 +446,18 @@ pie = alt.Chart(alloc_df_filtered).mark_arc(innerRadius=60).encode(
 ).properties(title="Portfolio Exposure").interactive()
 st.altair_chart(pie, use_container_width=True)
 
+
+st.subheader("2. Allocation in currency terms")
+st.dataframe(
+    alloc_df.sort_values('Weight', ascending=False).assign(
+        Weight_pct=lambda df: (df['Weight'] * 100).round(2),
+        Notional_rounded=lambda df: df['Notional'].round(0)
+    )[["Asset", "Category", "Weight_pct", "Notional_rounded"]]
+    .rename(columns={"Weight_pct": "Weight (%)", "Notional_rounded": "Amount"})
+)
+
 # --- B. Capital vs Risk ---
-st.subheader("2. Allocation Detail (Capital vs Risk)")
+st.subheader("3. Allocation Detail (Capital vs Risk)")
 col_chart1, col_chart2 = st.columns(2)
 
 alloc_df_full = pd.DataFrame({'Asset': tickers, 'Weight': opt_weights, 'Risk Contribution': final_rc})
@@ -316,7 +484,7 @@ with col_chart2:
         st.info("The bar chart compares how much money is invested vs. how much risk that investment adds to the total portfolio.")
 
 # --- C. Historical Performance ---
-st.subheader("3. Historical Performance")
+st.subheader("4. Historical Performance")
 n_assets = len(tickers)
 eq_weights = np.array([1/n_assets] * n_assets)
 cum_opt = (1 + returns_df.dot(opt_weights)).cumprod()
@@ -337,7 +505,7 @@ perf_chart = alt.Chart(hist_melted).mark_line(strokeWidth=2).encode(
 st.altair_chart(perf_chart, use_container_width=True)
 
 # --- D. Rolling Risk Analysis ---
-st.subheader("4. Dynamic Risk Analysis (Crisis Simulator)")
+st.subheader("5. Dynamic Risk Analysis (Crisis Simulator)")
 window = st.slider("Rolling Window (Months)", 3, 36, 12)
 
 # Calculate Data
@@ -367,7 +535,7 @@ st.altair_chart(vol_chart, use_container_width=True)
 st.caption(f"Comparing Strategy Risk vs {riskiest_name} over time.")
 
 # --- E. Efficient Frontier ---
-st.subheader("5. The Efficient Frontier")
+st.subheader("6. The Efficient Frontier")
 sim_df = generate_efficient_frontier(mu, Sigma)
 sim_df['Type'] = 'Random'; sim_df['Size'] = 20; sim_df['Color'] = 'grey'
 
@@ -385,4 +553,5 @@ frontier_chart = alt.Chart(combined_df).mark_circle().encode(
     tooltip=[alt.Tooltip('Type'), alt.Tooltip('Volatility', format='.1%'), alt.Tooltip('Return', format='.1%'), alt.Tooltip('Sharpe', format='.2f')],
     order=alt.Order('Size', sort='ascending') 
 ).interactive()
+
 st.altair_chart(frontier_chart, use_container_width=True)
