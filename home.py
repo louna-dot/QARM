@@ -8,7 +8,7 @@ st.caption("Institutional Investment Solutions | Portfolio Construction & Risk B
 st.divider()
 
 # --- 1. Mandate Overview ---
-st.header(" Mandate Overview")
+st.header(" 🔹 Mandate Overview")
 st.markdown(
     """
     **The Client:** Multi-Asset Pension Fund.
@@ -30,7 +30,7 @@ st.info(
 )
 
 # --- 3. Proposed Solutions ---
-st.header(" Implementation Strategy")
+st.header(" 🔹 Implementation Strategy")
 st.markdown(
     """
     To fulfill this mandate, we have deployed a proprietary optimization engine utilizing **Advanced Risk Budgeting Frameworks**:
@@ -50,7 +50,7 @@ st.markdown(
 )
 
 # --- 4. Dashboard Workflow ---
-st.header("⚙ Operational Workflow")
+st.header("🔹 Operational Workflow")
 
 col1, col2 = st.columns(2)
 
@@ -83,4 +83,5 @@ st.markdown(
     </div>
     """, 
     unsafe_allow_html=True
+
 )
