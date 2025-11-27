@@ -477,20 +477,6 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "Implementation & Rebalancing"
 ])
 
-
-# ============================================================
-#  TABS – CLIENT-FACING STRUCTURE
-# ============================================================
-
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "Investor Summary", 
-    "Portfolio Construction",
-    "Risk Decomposition",
-    "Scenario Analysis",
-    "Implementation & Rebalancing"
-])
-
-
 # ============================================================
 #  TAB 1 — INVESTOR SUMMARY
 # ============================================================
