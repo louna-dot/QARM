@@ -671,7 +671,7 @@ with tab3:
     or asset classes.
     """)
 
-    # ---- 2) Capital vs Risk: Weight vs Risk Contribution on one chart ----
+    # --- 2) Clean Grouped Comparison Chart (Weight vs Risk Contribution) ---
     st.subheader("Capital vs Risk")
 
     alloc_df_full = pd.DataFrame({
@@ -679,25 +679,31 @@ with tab3:
         "Weight": opt_weights,
         "Risk Contribution": final_rc
     })
+
     alloc_df_full = alloc_df_full[alloc_df_full["Weight"] > 0.001]
 
+    # Melt for grouped bar chart
     melted_df = alloc_df_full.melt(
-        "Asset", var_name="Metric", value_name="Value"
+        id_vars="Asset",
+        value_vars=["Weight", "Risk Contribution"],
+        var_name="Metric",
+        value_name="Value"
     )
 
-    chart = alt.Chart(melted_df).mark_bar().encode(
-        x=alt.X("Asset", axis=alt.Axis(labelAngle=-45)),
-        y=alt.Y("Value", axis=alt.Axis(format="%", title="Percentage of Portfolio")),
-        color=alt.Color("Metric", legend=alt.Legend(title="Metric")),
-        tooltip=["Asset", "Metric", alt.Tooltip("Value", format=".1%")]
-    ).properties(height=350)
+    chart = (
+        alt.Chart(melted_df)
+        .mark_bar()
+        .encode(
+            x=alt.X("Asset:N", axis=alt.Axis(labelAngle=-45)),
+            y=alt.Y("Value:Q", axis=alt.Axis(format="%", title="Percentage of Portfolio")),
+            color=alt.Color("Metric:N", legend=alt.Legend(title="Metric")),
+            tooltip=["Asset", "Metric", alt.Tooltip("Value", format=".1%")],
+            column=alt.Column("Metric:N", spacing=10, title=None)
+        )
+        .properties(height=300)
+    )
 
     st.altair_chart(chart, use_container_width=True)
-
-    st.caption("""
-    Bars show how much capital is allocated to each asset (Weight) 
-    versus how much risk it contributes (Risk Contribution).
-    """)
 
 
 
