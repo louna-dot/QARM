@@ -466,7 +466,7 @@ with st.spinner("Fetching data and optimizing..."):
     alloc_df = pd.DataFrame({
     "Asset": filtered_tickers,
     "Weight": opt_weights,
-    "Category": [asset_info_dict.get(t, "Unclassified") for t in filtered_tickers]
+    "Category": [asset_info_dict.get(t, "Unclassified") for t in filtered_tickers],
     "Currency": [currency_dict.get(t, "Unknown") for t in filtered_tickers],
     })
     
