@@ -459,17 +459,33 @@ with st.spinner("Fetching data and optimizing..."):
         target_vol=target_vol_input,
         alpha=alpha_input,
     )
-    
+
     # Currency information for each asset
     currency_dict = get_asset_currency(filtered_tickers)
-    
+
+    # Simple region mapping based on the high-level category
+    regions = []
+    for t in filtered_tickers:
+        cat = asset_info_dict.get(t, "Unclassified")
+        if "Emerging" in cat:
+            regions.append("Emerging Markets")
+        elif "Europe" in cat:
+            regions.append("Europe")
+        elif "Japan" in cat:
+            regions.append("Japan")
+        elif "US" in cat:
+            regions.append("United States")
+        else:
+            regions.append("Global / Other")
+
     alloc_df = pd.DataFrame({
-    "Asset": filtered_tickers,
-    "Weight": opt_weights,
-    "Category": [asset_info_dict.get(t, "Unclassified") for t in filtered_tickers],
-    "Currency": [currency_dict.get(t, "Unknown") for t in filtered_tickers],
+        "Asset": filtered_tickers,
+        "Weight": opt_weights,
+        "Category": [asset_info_dict.get(t, "Unclassified") for t in filtered_tickers],
+        "Currency": [currency_dict.get(t, "Unknown") for t in filtered_tickers],
+        "Region": regions,
     })
-    
+
     alloc_df = alloc_df.sort_values("Weight", ascending=False)
 
 
@@ -574,28 +590,37 @@ with tab2:
 
     st.altair_chart(pie, use_container_width=True)
 
-    # --- 3) Allocation in Currency Terms (by Currency) ---
-    st.subheader("Allocation in Currency Terms (by Currency)")
+    # --- 3) Geographic Exposure (by Region) ---
+    st.subheader("Geographic Exposure (by Region)")
     st.caption("""
-    Notional exposure grouped by trading currency. Amounts are expressed in the 
-    investor's base currency and do not include FX conversion effects.
+    Notional exposure aggregated by broad region, based on the underlying asset class.
     """)
 
-    alloc_currency = (
+    geo_df = (
         alloc_df
         .assign(Amount=lambda df: df["Weight"] * investment_amount)
-        .groupby("Currency", as_index=False)
+        .groupby("Region", as_index=False)
         .agg({"Amount": "sum"})
         .assign(
             Amount=lambda df: df["Amount"].round(0),
             Share_pct=lambda df: (df["Amount"] / df["Amount"].sum() * 100).round(2)
         )
-        [["Currency", "Amount", "Share_pct"]]
+        [["Region", "Amount", "Share_pct"]]
         .rename(columns={"Share_pct": "Share of Portfolio (%)"})
         .sort_values("Amount", ascending=False)
     )
 
-    st.dataframe(alloc_currency, use_container_width=True)
+    st.dataframe(geo_df, use_container_width=True)
+
+    # (optionnel) petit bar chart par région
+    geo_chart = alt.Chart(geo_df).mark_bar().encode(
+        x=alt.X("Region", axis=alt.Axis(labelAngle=-30)),
+        y=alt.Y("Share of Portfolio (%)", title="Share of Portfolio (%)"),
+        tooltip=["Region", "Amount", "Share of Portfolio (%)"]
+    ).properties(height=300)
+
+    st.altair_chart(geo_chart, use_container_width=True)
+
 
 
     # --- 4) Efficient Frontier view ---
