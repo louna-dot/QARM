@@ -612,16 +612,6 @@ with tab2:
 
     st.dataframe(geo_df, use_container_width=True)
 
-    # (optionnel) petit bar chart par région
-    geo_chart = alt.Chart(geo_df).mark_bar().encode(
-        x=alt.X("Region", axis=alt.Axis(labelAngle=-30)),
-        y=alt.Y("Share of Portfolio (%)", title="Share of Portfolio (%)"),
-        tooltip=["Region", "Amount", "Share of Portfolio (%)"]
-    ).properties(height=300)
-
-    st.altair_chart(geo_chart, use_container_width=True)
-
-
 
     # --- 4) Efficient Frontier view ---
     st.subheader("Efficient Frontier (Risk / Return Space)")
