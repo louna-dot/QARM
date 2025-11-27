@@ -509,9 +509,8 @@ with tab1:
     The selected allocation methodology reflects the investor's long-term objectives 
     and aims to maintain a stable and diversified risk profile.
     """)
-    
-    st.subheader("Key Portfolio Metrics")
 
+    st.subheader("Key Portfolio Metrics")
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Expected Return (p.a.)", f"{exp_ret*100:.1f}%")
     c2.metric("Expected Volatility", f"{final_vol*100:.1f}%")
@@ -522,24 +521,13 @@ with tab1:
 # ============================================================
 #  TAB 2 — PORTFOLIO CONSTRUCTION
 # ============================================================
-
+with tab2:
     st.header("Portfolio Construction")
 
     st.write("""
     The portfolio allocation is derived from the selected optimisation methodology, 
     balancing expected return, risk, and diversification across asset classes.
     """)
-
-    # ---- Calculate stats for this tab ----
-    exp_return = float(exp_ret)
-    exp_vol = float(final_vol)
-    sharpe = exp_return / exp_vol if exp_vol > 0 else 0.0
-
-    st.subheader("Portfolio Characteristics")
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Expected Annual Return", f"{exp_return*100:,.1f}%")
-    c2.metric("Expected Volatility", f"{exp_vol*100:,.1f}%")
-    c3.metric("Sharpe Ratio", f"{sharpe:,.2f}")
 
     # Allocation table
     st.subheader("Strategic Allocation")
@@ -562,14 +550,13 @@ with tab1:
 
     pie = alt.Chart(alloc_df_filtered).mark_arc(innerRadius=60).encode(
         theta=alt.Theta(field="Weight", type="quantitative"),
-        # on laisse Altair gérer les couleurs automatiquement
         color=alt.Color(field="Category", type="nominal"),
         tooltip=["Category", "Asset", alt.Tooltip("Weight", format=".1%")]
     ).properties(title="Portfolio Exposure").interactive()
 
     st.altair_chart(pie, use_container_width=True)
 
-    # --- Table en montants ---
+    # --- Table in currency terms ---
     st.subheader("Allocation in Currency Terms")
     st.dataframe(
         alloc_df.sort_values('Weight', ascending=False).assign(
@@ -578,7 +565,6 @@ with tab1:
         )[["Asset", "Category", "Weight_pct", "Notional_rounded"]]
         .rename(columns={"Weight_pct": "Weight (%)", "Notional_rounded": "Amount"})
     )
-
 
 
 # ============================================================
@@ -605,12 +591,14 @@ with tab3:
     A balanced portfolio ensures that no single asset or asset class dominates 
     total risk, which is a key principle of institutional portfolio construction.
     """)
+
     st.subheader("Capital vs Risk")
 
     alloc_df_full = pd.DataFrame({
         'Asset': filtered_tickers,
         'Weight': opt_weights,
-        'Risk Contribution': final_rc})
+        'Risk Contribution': final_rc
+    })
     alloc_df_full = alloc_df_full[alloc_df_full['Weight'] > 0.001]
     melted_df = alloc_df_full.melt('Asset', var_name='Metric', value_name='Value')
 
@@ -634,10 +622,13 @@ with tab4:
     st.write("""
     These illustrative long-term projections provide a sense of potential portfolio 
     evolution based on expected return and volatility.  
-    They are not forecasts, but tools to support informed decision-making.
+    They are not forecasts, but tools to support decision-making.
     """)
 
     # ---- Scenario projections ----
+    exp_return = float(exp_ret)
+    exp_vol = float(final_vol)
+
     years = time_horizon_years
     exp_growth = (1 + exp_return) ** years
     down_growth = max((1 + exp_return - exp_vol), 0) ** years
@@ -662,6 +653,8 @@ with tab4:
     These indicative ranges highlight uncertainty around long-term outcomes. 
     Diversification and disciplined rebalancing help navigate this uncertainty.
     """)
+
+    # ---- Historical performance ----
     st.subheader("Historical Performance")
 
     n_assets = len(filtered_tickers)
@@ -672,7 +665,8 @@ with tab4:
     hist_data = pd.DataFrame({
         'Date': returns_df.index,
         'Selected Strategy': cum_opt,
-        'Equal Weight Benchmark': cum_eq})
+        'Equal Weight Benchmark': cum_eq
+    })
     hist_melted = hist_data.melt('Date', var_name='Strategy', value_name='Cumulative Return')
 
     unique_years = sorted(returns_df.index.year.unique())
@@ -685,10 +679,12 @@ with tab4:
         tooltip=[
             alt.Tooltip('Date', format='%b %Y'),
             alt.Tooltip('Strategy'),
-            alt.Tooltip('Cumulative Return', format='.2f')]
+            alt.Tooltip('Cumulative Return', format='.2f')
+        ]
     ).properties(height=400).interactive()
     st.altair_chart(perf_chart, use_container_width=True)
 
+    # ---- Rolling risk ----
     st.subheader("Dynamic Risk (Rolling Volatility)")
 
     window = st.slider("Rolling Window (Months)", 3, 36, 12, key="rolling_window_tab4")
@@ -702,7 +698,8 @@ with tab4:
     vol_data = pd.DataFrame({
         'Date': returns_df.index,
         'Strategy Risk': rolling_port_vol,
-        f'{riskiest_name} (Riskiest Asset)': rolling_asset_vol.iloc[:, max_vol_asset]})
+        f'{riskiest_name} (Riskiest Asset)': rolling_asset_vol.iloc[:, max_vol_asset]
+    })
     vol_melted = vol_data.melt('Date', var_name='Metric', value_name='Volatility')
 
     vol_chart = alt.Chart(vol_melted).mark_line(strokeWidth=2).encode(
@@ -712,10 +709,12 @@ with tab4:
         tooltip=[
             alt.Tooltip('Date', format='%b %Y'),
             alt.Tooltip('Metric'),
-            alt.Tooltip('Volatility', format='.1%')]
+            alt.Tooltip('Volatility', format='.1%')
+        ]
     ).properties(height=350).interactive()
 
     st.altair_chart(vol_chart, use_container_width=True)
+
 
 # ============================================================
 #  TAB 5 — IMPLEMENTATION & REBALANCING
@@ -725,7 +724,7 @@ with tab5:
 
     st.write("""
     Practical guidance on implementing and maintaining the portfolio over time.  
-    Includes rebalancing rules and asset class mapping.
+    Includes rebalancing rules and asset mapping.
     """)
 
     st.subheader("Rebalancing Policy")
@@ -736,8 +735,9 @@ with tab5:
     """)
 
     st.subheader("Asset Mapping")
+    st.caption("Illustrative mapping between tickers and their asset class.")
     st.dataframe(
-        alloc_df[["Asset", "Category", "Weight"]],
+        alloc_df[["Asset", "Category"]],
         use_container_width=True
     )
 
@@ -745,4 +745,3 @@ with tab5:
     Implementation should favor liquid, cost-efficient instruments with low tracking error.  
     Rebalancing discipline is essential to maintain the intended risk exposure.
     """)
-
