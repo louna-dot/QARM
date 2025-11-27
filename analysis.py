@@ -578,17 +578,13 @@ with tab2:
     st.subheader("Efficient Frontier (Risk / Return Space)")
 
     sim_df = generate_efficient_frontier(mu, Sigma)
-    sim_df["Type"] = "Random"
-    sim_df["Size"] = 20
-    sim_df["Color"] = "Other Portfolios"
+    sim_df["Type"] = "Other Portfolios"
 
     opt_point = pd.DataFrame({
         "Volatility": [float(final_vol)],
         "Return": [float(exp_ret)],
         "Sharpe": [float(exp_ret/final_vol) if final_vol > 0 else 0.0],
-        "Type": ["Selected Strategy"],
-        "Size": [300],
-        "Color": ["Selected Strategy"]
+        "Type": ["Selected Strategy"]
     })
 
     combined_df = pd.concat([sim_df, opt_point], ignore_index=True)
@@ -596,18 +592,22 @@ with tab2:
     frontier_chart = alt.Chart(combined_df).mark_circle().encode(
         x=alt.X("Volatility", axis=alt.Axis(format="%", title="Annualised Volatility")),
         y=alt.Y("Return", axis=alt.Axis(format="%", title="Annualised Return")),
-        color=alt.Color("Color", scale=None, legend=alt.Legend(title="Portfolio Type")),
-        size=alt.Size("Size", scale=None, legend=None),
+        color=alt.Color("Type", legend=alt.Legend(title="Portfolio Type")),
+        size=alt.Size(
+            "Type",
+            legend=None,
+            scale=alt.Scale(range=[40, 200])  # plus gros pour la stratégie choisie
+        ),
         tooltip=[
             alt.Tooltip("Type"),
             alt.Tooltip("Volatility", format=".1%"),
             alt.Tooltip("Return", format=".1%"),
             alt.Tooltip("Sharpe", format=".2f")
-        ],
-        order=alt.Order("Size", sort="ascending")
+        ]
     ).properties(height=400).interactive()
 
     st.altair_chart(frontier_chart, use_container_width=True)
+
 
 
 # ============================================================
