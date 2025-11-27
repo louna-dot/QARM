@@ -21,7 +21,7 @@ def get_asset_info(tickers):
         'QQQ': 'Equities - US Tech', 
         'DIA': 'Equities - US Value',
         'IWM': 'Equities - US Small Cap', 
-        'EEM': 'Equities - Emerging Mkts', 
+        'EEM': 'Equities - Emerging Markets', 
         'VTI': 'Equities - Total Market',
         'VGK': 'Equities - Europe', 
         'EWJ': 'Equities - Japan',
@@ -31,7 +31,7 @@ def get_asset_info(tickers):
         'SHY': 'Bonds - US Short',
         'LQD': 'Bonds - Corporate', 
         'HYG': 'Bonds - High Yield', 
-        'EMB': 'Bonds - Emerging Mkts',
+        'EMB': 'Bonds - Emerging Markets',
         'BND': 'Bonds - Total Market', 
         'AGG': 'Bonds - Aggregate',
 
@@ -529,24 +529,28 @@ with tab2:
     balancing expected return, risk, and diversification across asset classes.
     """)
 
-    # Allocation table
-    st.subheader("Strategic Allocation")
-    st.caption("Weights shown reflect the optimized risk-adjusted allocation.")
+    # --- 1) Strategic Allocation (by Asset Class) ---
+    st.subheader("Strategic Allocation (by Asset Class)")
+    st.caption("Strategic weights aggregated at the asset-class level.")
 
-    alloc_df_display = (
-        alloc_df.sort_values("Weight", ascending=False)
-                .assign(
-                    Weight_pct=lambda df: (df["Weight"] * 100).round(2),
-                    Amount=lambda df: (df["Weight"] * investment_amount).round(0)
-                )[["Asset", "Category", "Weight_pct", "Amount"]]
-                .rename(columns={"Weight_pct": "Weight (%)"})
+    alloc_by_class = (
+        alloc_df
+        .groupby("Category", as_index=False)
+        .agg({"Weight": "sum"})
+        .assign(Weight_pct=lambda df: (df["Weight"] * 100).round(2))
+        .rename(columns={"Weight_pct": "Weight (%)"})
+        .sort_values("Weight", ascending=False)
     )
-    st.dataframe(alloc_df_display, use_container_width=True)
 
-    # --- Pie chart by asset class ---
+    st.dataframe(
+        alloc_by_class[["Category", "Weight (%)"]],
+        use_container_width=True
+    )
+
+    # --- 2) Pie chart by asset class ---
     st.subheader("Allocation by Asset Class (Pie Chart)")
 
-    alloc_df_filtered = alloc_df[alloc_df['Weight'] > 0.001]
+    alloc_df_filtered = alloc_df[alloc_df["Weight"] > 0.001]
 
     pie = alt.Chart(alloc_df_filtered).mark_arc(innerRadius=60).encode(
         theta=alt.Theta(field="Weight", type="quantitative"),
@@ -556,15 +560,23 @@ with tab2:
 
     st.altair_chart(pie, use_container_width=True)
 
-    # --- Table in currency terms ---
-    st.subheader("Allocation in Currency Terms")
-    st.dataframe(
-        alloc_df.sort_values('Weight', ascending=False).assign(
-            Weight_pct=lambda df: (df['Weight'] * 100).round(2),
-            Notional_rounded=lambda df: (df['Weight'] * investment_amount).round(0)
-        )[["Asset", "Category", "Weight_pct", "Notional_rounded"]]
-        .rename(columns={"Weight_pct": "Weight (%)", "Notional_rounded": "Amount"})
+    # --- 3) Allocation in Currency Terms (by Asset) ---
+    st.subheader("Allocation in Currency Terms (by Asset)")
+    st.caption("Notional exposure by instrument, in the base currency.")
+
+    alloc_in_currency = (
+        alloc_df
+        .assign(
+            Weight_pct=lambda df: (df["Weight"] * 100).round(2),
+            Amount=lambda df: (df["Weight"] * investment_amount).round(0)
+        )
+        .sort_values("Weight", ascending=False)
+        [["Asset", "Category", "Weight_pct", "Amount"]]
+        .rename(columns={"Weight_pct": "Weight (%)"})
     )
+
+    st.dataframe(alloc_in_currency, use_container_width=True)
+
 
 
 # ============================================================
