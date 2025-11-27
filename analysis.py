@@ -75,6 +75,19 @@ def get_asset_info(tickers):
 
     return classification
 
+@st.cache_data
+def get_asset_currency(tickers):
+    """
+    Return a dict {ticker: trading currency code} using yfinance metadata.
+    """
+    currencies = {}
+    for t in tickers:
+        try:
+            info = yf.Ticker(t).info
+            currencies[t] = info.get("currency", "Unknown")
+        except Exception:
+            currencies[t] = "Unknown"
+    return currencies
 
 @st.cache_data
 def load_data(tickers, start_date, rebalance_freq="M"):
@@ -445,14 +458,17 @@ with st.spinner("Fetching data and optimizing..."):
         max_weight=max_weight,
         target_vol=target_vol_input,
         alpha=alpha_input,
-        # si ta fonction n’attend pas tickers, commente ou supprime cette ligne :
-        # tickers=filtered_tickers
     )
-
+    
+    # Currency information for each asset
+    currency_dict = get_asset_currency(filtered_tickers)
+    
     alloc_df = pd.DataFrame({
     "Asset": filtered_tickers,
     "Weight": opt_weights,
-    "Category": [asset_info_dict.get(t, "Unclassified") for t in filtered_tickers]})
+    "Category": [asset_info_dict.get(t, "Unclassified") for t in filtered_tickers]
+    "Currency": [currency_dict.get(t, "Unknown") for t in filtered_tickers],
+    })
     
     alloc_df = alloc_df.sort_values("Weight", ascending=False)
 
@@ -558,21 +574,29 @@ with tab2:
 
     st.altair_chart(pie, use_container_width=True)
 
-    # --- 3) Allocation in Currency Terms (by Asset) ---
-    st.subheader("Allocation in Currency Terms (by Asset)")
-    st.caption("Notional exposure by instrument, in the base currency.")
+    # --- 3) Allocation in Currency Terms (by Currency) ---
+    st.subheader("Allocation in Currency Terms (by Currency)")
+    st.caption("""
+    Notional exposure grouped by trading currency. Amounts are expressed in the 
+    investor's base currency and do not include FX conversion effects.
+    """)
 
-    alloc_in_currency = (
+    alloc_currency = (
         alloc_df
+        .assign(Amount=lambda df: df["Weight"] * investment_amount)
+        .groupby("Currency", as_index=False)
+        .agg({"Amount": "sum"})
         .assign(
-            Weight_pct=lambda df: (df["Weight"] * 100).round(2),
-            Amount=lambda df: (df["Weight"] * investment_amount).round(0)
+            Amount=lambda df: df["Amount"].round(0),
+            Share_pct=lambda df: (df["Amount"] / df["Amount"].sum() * 100).round(2)
         )
-        .sort_values("Weight", ascending=False)
-        [["Asset", "Category", "Weight_pct", "Amount"]]
-        .rename(columns={"Weight_pct": "Weight (%)"})
+        [["Currency", "Amount", "Share_pct"]]
+        .rename(columns={"Share_pct": "Share of Portfolio (%)"})
+        .sort_values("Amount", ascending=False)
     )
-    st.dataframe(alloc_in_currency, use_container_width=True)
+
+    st.dataframe(alloc_currency, use_container_width=True)
+
 
     # --- 4) Efficient Frontier view ---
     st.subheader("Efficient Frontier (Risk / Return Space)")
