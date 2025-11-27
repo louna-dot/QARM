@@ -522,7 +522,7 @@ with tab1:
 # ============================================================
 #  TAB 2 — PORTFOLIO CONSTRUCTION
 # ============================================================
-with tab2:
+
     st.header("Portfolio Construction")
 
     st.write("""
@@ -555,24 +555,30 @@ with tab2:
     )
     st.dataframe(alloc_df_display, use_container_width=True)
 
+    # --- Pie chart by asset class ---
     st.subheader("Allocation by Asset Class (Pie Chart)")
-alloc_df_filtered = alloc_df[alloc_df['Weight'] > 0.001]
-pie = alt.Chart(alloc_df_filtered).mark_arc(innerRadius=60).encode(
-    theta=alt.Theta(field="Weight", type="quantitative"),
-    color=alt.Color(field="Category", type="nominal",
-                    scale=alt.Scale(domain=chart_domain, range=chart_range)),
-    tooltip=["Category", "Asset", alt.Tooltip("Weight", format=".1%")]
-).properties(title="Portfolio Exposure").interactive()
-st.altair_chart(pie, use_container_width=True)
 
-st.subheader("Allocation in Currency Terms")
-st.dataframe(
-    alloc_df.sort_values('Weight', ascending=False).assign(
-        Weight_pct=lambda df: (df['Weight'] * 100).round(2),
-        Notional_rounded=lambda df: (df['Weight'] * investment_amount).round(0)
-    )[["Asset", "Category", "Weight_pct", "Notional_rounded"]]
-    .rename(columns={"Weight_pct": "Weight (%)", "Notional_rounded": "Amount"})
-)
+    alloc_df_filtered = alloc_df[alloc_df['Weight'] > 0.001]
+
+    pie = alt.Chart(alloc_df_filtered).mark_arc(innerRadius=60).encode(
+        theta=alt.Theta(field="Weight", type="quantitative"),
+        # on laisse Altair gérer les couleurs automatiquement
+        color=alt.Color(field="Category", type="nominal"),
+        tooltip=["Category", "Asset", alt.Tooltip("Weight", format=".1%")]
+    ).properties(title="Portfolio Exposure").interactive()
+
+    st.altair_chart(pie, use_container_width=True)
+
+    # --- Table en montants ---
+    st.subheader("Allocation in Currency Terms")
+    st.dataframe(
+        alloc_df.sort_values('Weight', ascending=False).assign(
+            Weight_pct=lambda df: (df['Weight'] * 100).round(2),
+            Notional_rounded=lambda df: (df['Weight'] * investment_amount).round(0)
+        )[["Asset", "Category", "Weight_pct", "Notional_rounded"]]
+        .rename(columns={"Weight_pct": "Weight (%)", "Notional_rounded": "Amount"})
+    )
+
 
 
 # ============================================================
