@@ -621,24 +621,18 @@ with tab3:
     capital allocation with risk contribution.
     """)
 
-    # ---- 1) Risk contributions by asset ----
+    # ---- 1) Risk contributions by asset (table only) ----
     rc_df = pd.DataFrame({"Asset": filtered_tickers, "Risk Contribution": final_rc})
 
     st.subheader("Risk Contribution by Asset")
-    left, right = st.columns([2, 1])
-
-    with left:
-        st.dataframe(rc_df, use_container_width=True)
-
-    with right:
-        st.bar_chart(rc_df.set_index("Asset")["Risk Contribution"])
+    st.dataframe(rc_df, use_container_width=True)
 
     st.caption("""
     A well-balanced risk profile avoids concentration in a small number of assets 
     or asset classes.
     """)
 
-    # ---- 2) Capital vs Risk ----
+    # ---- 2) Capital vs Risk: Weight vs Risk Contribution on one chart ----
     st.subheader("Capital vs Risk")
 
     alloc_df_full = pd.DataFrame({
@@ -647,17 +641,25 @@ with tab3:
         "Risk Contribution": final_rc
     })
     alloc_df_full = alloc_df_full[alloc_df_full["Weight"] > 0.001]
-    melted_df = alloc_df_full.melt("Asset", var_name="Metric", value_name="Value")
+
+    melted_df = alloc_df_full.melt(
+        "Asset", var_name="Metric", value_name="Value"
+    )
 
     chart = alt.Chart(melted_df).mark_bar().encode(
         x=alt.X("Asset", axis=alt.Axis(labelAngle=-45)),
-        y=alt.Y("Value", axis=alt.Axis(format="%", title="Percentage")),
-        color="Metric",
-        column=alt.Column("Metric", title=None),
+        y=alt.Y("Value", axis=alt.Axis(format="%", title="Percentage of Portfolio")),
+        color=alt.Color("Metric", legend=alt.Legend(title="Metric")),
         tooltip=["Asset", "Metric", alt.Tooltip("Value", format=".1%")]
-    ).properties(width=300, height=300)
+    ).properties(height=350)
 
     st.altair_chart(chart, use_container_width=True)
+
+    st.caption("""
+    Bars show how much capital is allocated to each asset (Weight) 
+    versus how much risk it contributes (Risk Contribution).
+    """)
+
 
 
 # ============================================================
