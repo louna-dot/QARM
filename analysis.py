@@ -1118,6 +1118,21 @@ with tab5:
         st.warning("No assets selected for implementation.")
         st.stop()
 
+    # --- Example CSV to download (helps the user) ---
+    example_df = pd.DataFrame({
+        "Asset": filtered_tickers,
+        "Weight": [round(1.0 / n_assets_impl, 4)] * n_assets_impl
+    })
+    example_csv = example_df.to_csv(index=False).encode("utf-8")
+
+    st.download_button(
+        label="📥 Download example CSV template",
+        data=example_csv,
+        file_name="example_current_portfolio.csv",
+        mime="text/csv",
+        help="Use this file as a template: adjust the Weight column to match the current portfolio."
+    )
+
     # --- Build current_w from CSV if available, else fallback to equal-weight ---
     current_w_source = "equal-weight (fallback)"
 
@@ -1171,6 +1186,7 @@ with tab5:
         current_w = np.array([1.0 / n_assets_impl] * n_assets_impl)
 
     st.caption(f"Current portfolio source: **{current_w_source}**.")
+
 
     # --------------------------------------------------------
     # 1. Define target portfolio and drift
