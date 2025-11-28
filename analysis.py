@@ -806,279 +806,112 @@ with tab3:
 #  TAB 4 — SCENARIO & HISTORICAL ANALYSIS
 # ============================================================
 with tab4:
-    st.header("Scenario & Historical Analysis")
+    st.header("Scenario Analysis")
 
     st.write("""
-    This tab has two complementary parts:
-
-    **A. Forward-looking scenarios** – simple what-if adjustments to the 
-    current optimised allocation, showing how risk and return would change 
-    *if we modified the portfolio today*.
-
-    **B. Historical backtest & realised risk** – how the current strategy 
-    would have behaved in the past, based on realised market data.  
-    Historical metrics are not directly comparable to scenario metrics.
+    This section illustrates how the portfolio may evolve over time under 
+    different forward-looking assumptions, and reviews its historical behaviour.
     """)
 
-    # ========================================================
-    #  A. FORWARD-LOOKING SCENARIOS (PROSPECTIVE VIEW)
-    # ========================================================
+    # ----------------------------------------
+    # A. LONG-TERM RETURN SCENARIOS
+    # ----------------------------------------
+    st.subheader("A. Long-Term Return Scenarios (μ, μ±σ)")
 
-    st.markdown("### A. Forward-looking scenarios")
+    exp_r = float(exp_ret)
+    vol_r = float(final_vol)
+    years = time_horizon_years
 
-    # Helper: map detailed categories to broad buckets
-    def map_to_bucket(cat: str) -> str:
-        if "Equities" in cat:
-            return "Equities"
-        elif "Bonds" in cat:
-            return "Bonds"
-        elif "Gold" in cat:
-            return "Gold"
-        elif "Real Estate" in cat:
-            return "Real Estate"
-        elif "Crypto" in cat:
-            return "Crypto"
-        else:
-            return "Other"
+    # Scenario values
+    central_growth = (1 + exp_r) ** years
+    down_growth    = max(1 + exp_r - vol_r, 0) ** years
+    up_growth      = (1 + exp_r + vol_r) ** years
 
-    alloc_df["Bucket"] = alloc_df["Category"].apply(map_to_bucket)
-
-    # ---------- A1. Scenario selection & construction ----------
-    st.subheader("A1. Scenario selection")
-
-    scenario_choice = st.selectbox(
-        "Select scenario (what-if on the current optimised portfolio):",
-        [
-            "Base case (current optimisation)",
-            "Risk-off: rotate 10% from Equities into Bonds & Gold",
-            "Risk-on: rotate 10% from Bonds into Equities",
+    scenario_df = pd.DataFrame({
+        "Scenario": ["Downside (μ − σ)", "Central (μ)", "Upside (μ + σ)"],
+        "Annualised Return": [
+            (exp_r - vol_r) * 100,
+            exp_r * 100,
+            (exp_r + vol_r) * 100
         ],
-    )
-
-    shift_share = 0.10  # 10% of the total portfolio
-    base_weights = opt_weights.copy()
-    scenario_weights = base_weights.copy()
-    buckets = alloc_df["Bucket"].values
-
-    if scenario_choice != "Base case (current optimisation)":
-        w = base_weights.copy()
-        eq_idx = np.where(buckets == "Equities")[0]
-        bond_idx = np.where(buckets == "Bonds")[0]
-        gold_idx = np.where(buckets == "Gold")[0]
-
-        total_equity = w[eq_idx].sum() if len(eq_idx) > 0 else 0.0
-        total_bond = w[bond_idx].sum() if len(bond_idx) > 0 else 0.0
-
-        if scenario_choice.startswith("Risk-off") and total_equity > 0:
-            # Move capital from Equities to Bonds & Gold
-            shift = min(shift_share, total_equity)
-            if len(eq_idx) > 0:
-                w[eq_idx] *= (total_equity - shift) / total_equity
-            dest_idx = np.concatenate([bond_idx, gold_idx])
-            if len(dest_idx) > 0:
-                dest_weights = w[dest_idx]
-                dest_weights = dest_weights + shift * dest_weights / dest_weights.sum()
-                w[dest_idx] = dest_weights
-
-        elif scenario_choice.startswith("Risk-on") and total_bond > 0:
-            # Move capital from Bonds to Equities
-            shift = min(shift_share, total_bond)
-            if len(bond_idx) > 0:
-                w[bond_idx] *= (total_bond - shift) / total_bond
-            if len(eq_idx) > 0:
-                dest_weights = w[eq_idx]
-                dest_weights = dest_weights + shift * dest_weights / dest_weights.sum()
-                w[eq_idx] = dest_weights
-
-        scenario_weights = w / w.sum()
-    else:
-        scenario_weights = base_weights.copy()
-
-    # ---------- A2. Impact on key portfolio metrics ----------
-    st.subheader("A2. Impact on key portfolio metrics (forward-looking)")
-
-    base_ret = float(exp_ret)
-    base_vol = float(final_vol)
-    base_es = float(final_es_metric)
-
-    scen_ret = float(np.dot(scenario_weights, mu))
-    scen_vol = float(calculate_portfolio_vol(scenario_weights, Sigma))
-    scen_es = float(calculate_portfolio_es(scenario_weights, returns_df, alpha_input))
-
-    c1, c2, c3 = st.columns(3)
-    c1.metric(
-        "Expected Return (p.a.)",
-        f"{scen_ret*100:.1f}%",
-        delta=f"{(scen_ret - base_ret)*100:.1f} pp",
-    )
-    c2.metric(
-        "Expected Volatility (model-based)",
-        f"{scen_vol*100:.1f}%",
-        delta=f"{(scen_vol - base_vol)*100:.1f} pp",
-    )
-    c3.metric(
-        f"Expected Shortfall ({int(alpha_input*100)}%)",
-        f"{scen_es*100:.1f}%",
-        delta=f"{(scen_es - base_es)*100:.1f} pp",
-    )
-
-    st.caption("""
-    Scenario metrics are **model-based and forward-looking**: they show how 
-    risk and return would change if we adjusted the portfolio **today**, 
-    holding the risk model constant.
-    """)
-
-    # --- A3. Allocation changes by instrument (top 5) ---
-    st.subheader("A3. Allocation changes by instrument (top 5)")
-
-    # base = portefeuille courant, scen_w = portefeuille sous scénario
-    base_w = opt_weights              # shape (n_assets,)
-    scen_w = scenario_weights         # même shape
-
-    delta_w = scen_w - base_w
-
-    changes_df = pd.DataFrame({
-        "Asset": filtered_tickers,
-        "Current weight (%)": (base_w * 100).round(1),
-        "Scenario weight (%)": (scen_w * 100).round(1),
-        "Change (pp)": (delta_w * 100).round(1),
-    })
-
-    # On garde les 5 plus gros mouvements (en valeur absolue)
-    changes_df["abs_change"] = changes_df["Change (pp)"].abs()
-    top5_changes = (
-        changes_df
-        .sort_values("abs_change", ascending=False)
-        .head(5)
-        .drop(columns=["abs_change"])
+        "Projected Value": [
+            investment_amount * down_growth,
+            investment_amount * central_growth,
+            investment_amount * up_growth
+        ]
+    }).assign(
+        **{"Projected Value": lambda df: df["Projected Value"].round(0)}
     )
 
     st.dataframe(
-        top5_changes[
-            ["Asset", "Current weight (%)", "Scenario weight (%)", "Change (pp)"]
-        ],
-        use_container_width=True,
+        scenario_df,
+        use_container_width=True
     )
 
-    st.caption("""
-    Top 5 allocation changes between the current portfolio and the selected scenario, 
-    expressed in percentage points of portfolio weight.
-    """)
-    
+    st.caption("These scenarios are not forecasts, but illustrate potential ranges for long-term outcomes.")
 
-    # ========================================================
-    #  B. HISTORICAL BACKTEST & REALISED RISK (PAST VIEW)
-    # ========================================================
 
-    st.markdown("### B. Historical backtest & realised risk")
-
-    # ---------- B1. Historical performance ----------
-    st.subheader("B1. Historical performance of the current strategy")
-
-    st.write("""
-    The chart below shows how the **current optimised strategy** would have 
-    performed historically versus a simple equal-weight benchmark constructed 
-    on the same universe of assets.
-
-    These results are based on realised past returns and are **not** affected 
-    by the scenario selected above.
-    """)
+    # ----------------------------------------
+    # B. HISTORICAL PERFORMANCE
+    # ----------------------------------------
+    st.subheader("B. Historical Performance (vs Equal-Weight Benchmark)")
 
     n_assets = len(filtered_tickers)
-    if n_assets > 0:
-        eq_weights = np.array([1.0 / n_assets] * n_assets)
-    else:
-        eq_weights = np.array([])
+    eq_w = np.array([1/n_assets] * n_assets)
 
     cum_opt = (1 + returns_df.dot(opt_weights)).cumprod()
-    cum_eq = (1 + returns_df.dot(eq_weights)).cumprod()
+    cum_eq  = (1 + returns_df.dot(eq_w)).cumprod()
 
     hist_data = pd.DataFrame({
         "Date": returns_df.index,
         "Selected Strategy": cum_opt,
-        "Equal Weight Benchmark": cum_eq,
+        "Equal Weight Benchmark": cum_eq
     })
+
     hist_melted = hist_data.melt("Date", var_name="Strategy", value_name="Cumulative Return")
 
-    unique_years = sorted(returns_df.index.year.unique())
-    tick_values = [pd.Timestamp(f"{y}-01-01") for y in unique_years]
-
-    perf_chart = (
-        alt.Chart(hist_melted)
-        .mark_line(strokeWidth=2)
-        .encode(
-            x=alt.X("Date", axis=alt.Axis(values=tick_values, format="%Y", title="Year", grid=True)),
-            y=alt.Y("Cumulative Return", title="Growth of 1"),
-            color="Strategy",
-            tooltip=[
-                alt.Tooltip("Date", format="%b %Y"),
-                alt.Tooltip("Strategy"),
-                alt.Tooltip("Cumulative Return", format=".2f"),
-            ],
-        )
-        .properties(height=380)
-        .interactive()
-    )
+    perf_chart = alt.Chart(hist_melted).mark_line(strokeWidth=2).encode(
+        x=alt.X("Date:T", axis=alt.Axis(title="Date")),
+        y=alt.Y("Cumulative Return:Q", axis=alt.Axis(title="Growth of 1")),
+        color=alt.Color("Strategy:N"),
+        tooltip=[
+            alt.Tooltip("Date", format="%b %Y"),
+            "Strategy",
+            alt.Tooltip("Cumulative Return", format=".2f")
+        ]
+    ).properties(height=350).interactive()
 
     st.altair_chart(perf_chart, use_container_width=True)
 
-    st.caption("""
-    Backtested performance based on the chosen investment universe and rebalancing frequency.  
-    It reflects the **current strategy**, not the alternative scenarios defined above.
-    """)
 
-    # ---------- B2. Dynamic risk (rolling volatility) ----------
-    st.subheader("B2. Realised risk over time (rolling volatility)")
+    # ----------------------------------------
+    # C. DYNAMIC RISK
+    # ----------------------------------------
+    st.subheader("C. Rolling Volatility (Dynamic Risk)")
 
-    st.write("""
-    Rolling annualised volatility measures how the realised risk of the strategy 
-    has evolved over time, and how it compares to the riskiest single asset in 
-    the universe.
+    window = st.slider("Rolling window (months):", 3, 36, 12, key="scenario_rolling_win")
 
-    Unlike the scenario metrics, this is a **purely historical** measure.
-    """)
+    port_returns = returns_df.dot(opt_weights)
+    rolling_port_vol = port_returns.rolling(window).std() * np.sqrt(12)
 
-    window = st.slider("Rolling window (months)", 3, 36, 12, key="rolling_window_tab4")
-
-    rolling_asset_vol = returns_df.rolling(window=window).std() * np.sqrt(12)
-    port_ret_series = returns_df.dot(opt_weights)
-    rolling_port_vol = port_ret_series.rolling(window=window).std() * np.sqrt(12)
-
-    max_vol_asset = asset_vols.argmax()
-    riskiest_name = filtered_tickers[max_vol_asset]
-
-    vol_data = pd.DataFrame({
-        "Date": returns_df.index,
-        "Strategy Risk": rolling_port_vol,
-        f"{riskiest_name} (Riskiest Asset)": rolling_asset_vol.iloc[:, max_vol_asset],
+    vol_df = pd.DataFrame({
+        "Date": rolling_port_vol.index,
+        "Rolling Volatility": rolling_port_vol
     })
-    vol_melted = vol_data.melt("Date", var_name="Metric", value_name="Volatility")
 
-    vol_chart = (
-        alt.Chart(vol_melted)
-        .mark_line(strokeWidth=2)
-        .encode(
-            x=alt.X("Date", axis=alt.Axis(values=tick_values, format="%Y", title="Year", grid=True)),
-            y=alt.Y("Volatility", axis=alt.Axis(format="%", title="Annualised volatility")),
-            color="Metric",
-            tooltip=[
-                alt.Tooltip("Date", format="%b %Y"),
-                alt.Tooltip("Metric"),
-                alt.Tooltip("Volatility", format=".1%"),
-            ],
-        )
-        .properties(height=340)
-        .interactive()
-    )
+    vol_chart = alt.Chart(vol_df).mark_line(strokeWidth=2).encode(
+        x=alt.X("Date:T", axis=alt.Axis(title="Date")),
+        y=alt.Y("Rolling Volatility:Q", axis=alt.Axis(format="%", title="Volatility")),
+        tooltip=[
+            alt.Tooltip("Date", format="%b %Y"),
+            alt.Tooltip("Rolling Volatility", format=".2%")
+        ]
+    ).properties(height=300).interactive()
 
     st.altair_chart(vol_chart, use_container_width=True)
 
-    st.caption(f"""
-    Rolling {window}-month volatility of the **current optimised strategy** versus the 
-    single riskiest asset in the universe.  
-    This is based on realised past returns and is conceptually different from the 
-    **forward-looking** scenario risk shown in section A.
-    """)
+    st.caption("Rolling volatility captures how risk evolves through time.")
+
 
 
 # ============================================================
