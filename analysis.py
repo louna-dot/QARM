@@ -1068,7 +1068,7 @@ with tab5:
     delta_weights = target_weights - current_weights
     delta_amounts = target_amounts - current_amounts
 
-        trades_df = pd.DataFrame({
+    trades_df = pd.DataFrame({
         "Asset": filtered_tickers,
         "Category": alloc_df["Category"].values,
         "Current Weight": current_weights,
