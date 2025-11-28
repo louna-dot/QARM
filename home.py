@@ -55,7 +55,7 @@ allocating risk, or incorporating forward-looking assumptions.
     *   **Equal Weight (Benchmark):** 
         *   *Strategy:* Allocates the same weight to each asset.
         *   *Benefit:* Simple, transparent, robust to estimation errors, and provides a clean benchmark for comparison.
-    """
+    """)
 
     st.caption("""
 These five models cover the full spectrum of allocation philosophies: risk-balanced, 
@@ -98,4 +98,5 @@ st.markdown(
     unsafe_allow_html=True
 
 )
+
 
