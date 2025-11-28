@@ -49,7 +49,7 @@ allocating risk, or incorporating forward-looking assumptions.
         *   *Benefit:* Focuses on tail-risk protection and mitigates losses during crisis periods.
     
     *   **Target Volatility (MVO):** 
-        *   *Strategy:* Adjusts portfolio weights so that annualised volatility matches a **pre-defined volatility target.
+        *   *Strategy:* Adjusts portfolio weights so that annualised volatility matches a pre-defined volatility target.
         *   *Benefit:* Maintains consistent risk exposure over time and aligns with mandates that impose volatility limits.
 
     *   **Equal Weight (Benchmark):** 
@@ -98,6 +98,7 @@ st.markdown(
     unsafe_allow_html=True
 
 )
+
 
 
 
