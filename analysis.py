@@ -497,11 +497,27 @@ with st.spinner("Fetching data and optimizing..."):
     exp_ret = np.dot(opt_weights, mu)
 
 # ============================================================
-#  TABS – CLIENT-FACING STRUCTURE
+# 5. TOP BAR – PORTFOLIO OVERVIEW (Bloomberg-style)
+# ============================================================
+
+st.title(f"Portfolio Dashboard – {strategy_choice}")
+
+st.markdown("### Portfolio overview")
+
+top_c1, top_c2, top_c3, top_c4 = st.columns(4)
+top_c1.metric("Expected Return (p.a.)", f"{exp_ret*100:.1f}%")
+top_c2.metric("Volatility (p.a.)", f"{final_vol*100:.1f}%")
+top_c3.metric("Diversification Ratio", f"{div_ratio:.2f}")
+top_c4.metric("Expected Shortfall (α)", f"{final_es_metric*100:.1f}%")
+
+st.divider()
+
+# ============================================================
+# 6. TABS – INSTITUTIONAL STRUCTURE
 # ============================================================
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "Investor Summary", 
+    "Investor Overview",
     "Portfolio Construction",
     "Risk Decomposition",
     "Scenario Analysis",
@@ -509,44 +525,42 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 ])
 
 # ============================================================
-#  TAB 1 — INVESTOR SUMMARY
+#  TAB 1 — INVESTOR OVERVIEW
 # ============================================================
 with tab1:
-    st.header("Investor Summary")
+    st.header("Investor Overview")
 
     st.write("""
-    This section provides a high-level overview of the investor’s profile and 
-    long-term mandate. The objective is to ensure that the portfolio construction 
-    aligns with the risk tolerance, investment horizon, and strategic constraints.
+    This section summarises the **mandate** and key characteristics of the investor.
+    It is designed for investment committees and governance bodies, rather than quants.
     """)
 
-    # Investor profile metrics
     c1, c2, c3 = st.columns(3)
     c1.metric("Investment Amount", f"{investment_amount:,.0f}")
     c2.metric("Risk Profile", risk_profile)
     c3.metric("Investment Horizon", f"{time_horizon_years} years")
 
-    st.subheader("Mandate Overview")
+    st.subheader("Mandate summary")
     st.markdown(f"""
     • **Objective:** Long-term capital preservation and growth  
-    • **Risk Tolerance:** {risk_profile}  
-    • **Investment Horizon:** {time_horizon_years} years  
-    • **Rebalancing Frequency:** {rebalance_label}  
-    • **Selected Allocation Model:** *{strategy_choice}*  
+    • **Risk tolerance:** {risk_profile}  
+    • **Investment horizon:** {time_horizon_years} years  
+    • **Rebalancing frequency:** {rebalance_label}  
+    • **Allocation model:** *{strategy_choice}*  
     """)
+
+    st.subheader("Key portfolio metrics")
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Expected Return (p.a.)", f"{exp_ret*100:.1f}%")
+    k2.metric("Volatility (p.a.)", f"{final_vol*100:.1f}%")
+    k3.metric("Expected Shortfall", f"{final_es_metric*100:.1f}%")
+    k4.metric("Diversification Ratio", f"{div_ratio:.2f}")
 
     st.caption("""
-    The selected allocation methodology reflects the investor's long-term objectives 
-    and aims to maintain a stable and diversified risk profile.
+    These headline metrics provide a governance-level view of the portfolio’s 
+    risk/return profile. Detailed allocation and risk decomposition are available
+    in the subsequent tabs.
     """)
-
-    st.subheader("Key Portfolio Metrics")
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Expected Return (p.a.)", f"{exp_ret*100:.1f}%")
-    c2.metric("Expected Volatility", f"{final_vol*100:.1f}%")
-    c3.metric("Expected Shortfall", f"{final_es_metric*100:.1f}%")
-    c4.metric("Diversification Ratio", f"{div_ratio:.2f}")
-
 
 # ============================================================
 #  TAB 2 — PORTFOLIO CONSTRUCTION
@@ -555,13 +569,15 @@ with tab2:
     st.header("Portfolio Construction")
 
     st.write("""
-    This tab focuses on how the portfolio is constructed across asset classes 
-    and instruments, based on the selected allocation model.
+    This tab focuses on **how the portfolio is built**, with emphasis on allocation 
+    across asset classes, instruments, regions and the position of the optimised 
+    strategy in risk/return space.
     """)
 
-    # --- 1) Strategic Allocation (by Asset Class) ---
-    st.subheader("Strategic Allocation (by Asset Class)")
-    st.caption("Strategic weights aggregated at the asset-class level.")
+    # ----------------------------------------
+    # A. STRATEGIC ALLOCATION BY ASSET CLASS
+    # ----------------------------------------
+    st.subheader("A. Strategic allocation by asset class")
 
     alloc_by_class = (
         alloc_df
@@ -569,36 +585,66 @@ with tab2:
         .agg({"Weight": "sum"})
         .assign(Weight_pct=lambda df: (df["Weight"] * 100).round(2))
         .rename(columns={"Weight_pct": "Weight (%)"})
-        .sort_values("Weight", ascending=False)
+        .sort_values("Weight (%)", ascending=False)
     )
+
     st.dataframe(
         alloc_by_class[["Category", "Weight (%)"]],
-        use_container_width=True
+        use_container_width=True,
     )
 
-    # --- 2) Pie chart by asset class ---
-    st.subheader("Allocation by Asset Class (Pie Chart)")
+    class_bar = (
+        alt.Chart(alloc_by_class)
+        .mark_bar()
+        .encode(
+            x=alt.X("Weight (%):Q", title="Weight (%)"),
+            y=alt.Y("Category:N", sort="-x"),
+            tooltip=[
+                alt.Tooltip("Category:N"),
+                alt.Tooltip("Weight (%):Q", format=".1f")
+            ],
+        )
+        .properties(height=320)
+    )
+    st.altair_chart(class_bar, use_container_width=True)
 
-    alloc_df_filtered = alloc_df[alloc_df["Weight"] > 0.001]
+    st.caption("Strategic weights aggregated at the asset-class level.")
 
-    pie = alt.Chart(alloc_df_filtered).mark_arc(innerRadius=60).encode(
-        theta=alt.Theta(field="Weight", type="quantitative"),
-        color=alt.Color(field="Category", type="nominal"),
-        tooltip=["Category", "Asset", alt.Tooltip("Weight", format=".1%")]
-    ).properties(title="Portfolio Exposure").interactive()
+    st.divider()
 
-    st.altair_chart(pie, use_container_width=True)
+    # ----------------------------------------
+    # B. TOP HOLDINGS (INSTRUMENT LEVEL)
+    # ----------------------------------------
+    st.subheader("B. Top holdings (instrument level)")
 
-    
-            # --- 3) Geographic & asset-class mix ---
-    st.subheader("Geographic exposure by asset class")
+    top_holdings = (
+        alloc_df
+        .assign(
+            Weight_pct=lambda df: (df["Weight"] * 100).round(2),
+            Amount=lambda df: (df["Weight"] * investment_amount).round(0),
+        )
+        .sort_values("Weight", ascending=False)
+        .head(10)
+        [["Asset", "Category", "Currency", "Region", "Weight_pct", "Amount"]]
+        .rename(columns={"Weight_pct": "Weight (%)"})
+    )
+
+    st.dataframe(top_holdings, use_container_width=True)
+
+    st.caption("Top 10 positions by capital allocation, including currency and region tags.")
+
+    st.divider()
+
+    # ----------------------------------------
+    # C. GEOGRAPHIC EXPOSURE BY ASSET CLASS
+    # ----------------------------------------
+    st.subheader("C. Geographic exposure by asset class")
 
     st.caption("""
-    This view shows how the portfolio's risk budget is distributed **by region** 
-    and **by major asset class** (Equities, Bonds, Real Assets, etc.).
+    This view shows how the portfolio's exposure is distributed **by region** and 
+    across broad asset classes (Equities, Bonds, Real Assets, Commodities, etc.).
     """)
 
-    # Helper: map detailed Category to a broad asset class label
     def classify_asset_class(cat: str) -> str:
         c = (cat or "").lower()
         if "equities" in c or "equity" in c or "stock" in c:
@@ -613,106 +659,105 @@ with tab2:
             return "Crypto"
         return "Other"
 
-    # Add a broad asset-class label
     geo_ac_df = alloc_df.assign(
         AssetClass=lambda df: df["Category"].apply(classify_asset_class)
     )
 
-    # Aggregate weights by Region × AssetClass
     region_ac = (
         geo_ac_df
         .groupby(["Region", "AssetClass"], as_index=False)
         .agg({"Weight": "sum"})
     )
-    region_ac["Weight_pct"] = region_ac["Weight"] * 100
+    region_ac["Weight_pct"] = (region_ac["Weight"] * 100).round(1)
 
-    # --- 3a) Matrix table (Region x Asset Class) ---
-    matrix = (
-        region_ac
-        .pivot(index="Region", columns="AssetClass", values="Weight_pct")
-        .fillna(0)
-        .round(1)
-    )
-    matrix["Total (%)"] = matrix.sum(axis=1).round(1)
-    matrix = matrix.reset_index()
-
-    st.dataframe(matrix, use_container_width=True)
-
-    st.caption("""
-    Rows sum to the **total regional weight** in the portfolio. Columns show how 
-    much of that regional exposure comes from Equities, Bonds, Real Assets, etc.
-    """)
-
-    # --- 3b) Stacked bar chart by Region & Asset Class ---
-    stacked_chart = (
-        alt.Chart(region_ac)
-        .mark_bar()
-        .encode(
-            x=alt.X(
-                "sum(Weight):Q",
-                stack="normalize",
-                axis=alt.Axis(format="%", title="Share of portfolio")
-            ),
-            y=alt.Y("Region:N", sort="-x"),
-            color=alt.Color(
-                "AssetClass:N",
-                legend=alt.Legend(title="Asset class")
-            ),
-            tooltip=[
-                alt.Tooltip("Region:N"),
-                alt.Tooltip("AssetClass:N", title="Asset class"),
-                alt.Tooltip("Weight_pct:Q", format=".1f", title="Weight (%)"),
-            ],
+    if not region_ac.empty:
+        matrix = (
+            region_ac
+            .pivot(index="Region", columns="AssetClass", values="Weight_pct")
+            .fillna(0)
         )
-        .properties(height=260)
-    )
+        matrix["Total (%)"] = matrix.sum(axis=1).round(1)
+        matrix = matrix.reset_index()
 
-    st.altair_chart(stacked_chart, use_container_width=True)
+        st.dataframe(matrix, use_container_width=True)
+
+        stacked_chart = (
+            alt.Chart(region_ac)
+            .mark_bar()
+            .encode(
+                x=alt.X(
+                    "sum(Weight):Q",
+                    stack="normalize",
+                    axis=alt.Axis(format="%", title="Share of portfolio"),
+                ),
+                y=alt.Y("Region:N", sort="-x"),
+                color=alt.Color("AssetClass:N", legend=alt.Legend(title="Asset class")),
+                tooltip=[
+                    alt.Tooltip("Region:N"),
+                    alt.Tooltip("AssetClass:N", title="Asset class"),
+                    alt.Tooltip("Weight_pct:Q", format=".1f", title="Weight (%)"),
+                ],
+            )
+            .properties(height=260)
+        )
+        st.altair_chart(stacked_chart, use_container_width=True)
+
+        st.caption("""
+        Each bar represents a **region**; colours show how that regional exposure 
+        is split between Equities, Bonds and other asset classes.
+        """)
+    else:
+        st.info("No region information available for the current selection.")
+
+    st.divider()
+
+    # ----------------------------------------
+    # D. EFFICIENT FRONTIER POSITIONING
+    # ----------------------------------------
+    st.subheader("D. Efficient frontier positioning")
 
     st.caption("""
-    Each bar represents a **region**; colours show how that region is split across 
-    Equities, Bonds and other asset classes. This highlights, for example, 
-    whether Emerging Markets exposure is primarily equity-driven or bond-driven.
+    The scatter plot below shows simulated portfolios in risk/return space, with 
+    the optimised strategy highlighted. This is illustrative and based on the 
+    estimated mean and covariance of the selected assets.
     """)
-
-
-    
-
-    # --- 4) Efficient Frontier view ---
-    st.subheader("Efficient Frontier (Risk / Return Space)")
 
     sim_df = generate_efficient_frontier(mu, Sigma)
-    sim_df["Type"] = "Other Portfolios"
+    sim_df["Type"] = "Other portfolios"
 
     opt_point = pd.DataFrame({
         "Volatility": [float(final_vol)],
         "Return": [float(exp_ret)],
-        "Sharpe": [float(exp_ret/final_vol) if final_vol > 0 else 0.0],
-        "Type": ["Selected Strategy"]
+        "Sharpe": [float(exp_ret / final_vol) if final_vol > 0 else 0.0],
+        "Type": ["Optimised portfolio"],
     })
 
     combined_df = pd.concat([sim_df, opt_point], ignore_index=True)
 
-    frontier_chart = alt.Chart(combined_df).mark_circle().encode(
-        x=alt.X("Volatility", axis=alt.Axis(format="%", title="Annualised Volatility")),
-        y=alt.Y("Return", axis=alt.Axis(format="%", title="Annualised Return")),
-        color=alt.Color("Type", legend=alt.Legend(title="Portfolio Type")),
-        size=alt.Size(
-            "Type",
-            legend=None,
-            scale=alt.Scale(range=[40, 200])  # plus gros pour la stratégie choisie
-        ),
-        tooltip=[
-            alt.Tooltip("Type"),
-            alt.Tooltip("Volatility", format=".1%"),
-            alt.Tooltip("Return", format=".1%"),
-            alt.Tooltip("Sharpe", format=".2f")
-        ]
-    ).properties(height=400).interactive()
+    frontier_chart = (
+        alt.Chart(combined_df)
+        .mark_circle()
+        .encode(
+            x=alt.X("Volatility:Q", axis=alt.Axis(format="%", title="Annualised volatility")),
+            y=alt.Y("Return:Q", axis=alt.Axis(format="%", title="Annualised return")),
+            color=alt.Color("Type:N", legend=alt.Legend(title="Portfolio type")),
+            size=alt.Size(
+                "Type:N",
+                legend=None,
+                scale=alt.Scale(range=[40, 200])
+            ),
+            tooltip=[
+                alt.Tooltip("Type:N"),
+                alt.Tooltip("Volatility:Q", format=".1%", title="Volatility"),
+                alt.Tooltip("Return:Q", format=".1%", title="Return"),
+                alt.Tooltip("Sharpe:Q", format=".2f", title="Sharpe ratio"),
+            ],
+        )
+        .properties(height=380)
+        .interactive()
+    )
 
     st.altair_chart(frontier_chart, use_container_width=True)
-
-
 
 # ============================================================
 #  TAB 3 — RISK DECOMPOSITION
@@ -721,115 +766,155 @@ with tab3:
     st.header("Risk Decomposition")
 
     st.write("""
-    This tab highlights how risk is distributed across assets and compares 
-    capital allocation with risk contribution.
+    This section focuses on how **total portfolio risk** is distributed across 
+    individual holdings and asset classes, and whether risk is more concentrated 
+    than capital.
     """)
 
-    # ---- 1) Risk contributions by asset (table only) ----
-    rc_df = pd.DataFrame({"Asset": filtered_tickers, "Risk Contribution": final_rc})
+    # ----------------------------------------
+    # A. RISK CONTRIBUTION BY ASSET
+    # ----------------------------------------
+    st.subheader("A. Risk contribution by asset")
 
-    st.subheader("Risk Contribution by Asset")
-    st.dataframe(rc_df, use_container_width=True)
+    rc_df = pd.DataFrame({
+        "Asset": filtered_tickers,
+        "Category": [asset_info_dict.get(t, "Unclassified") for t in filtered_tickers],
+        "Risk Contribution": final_rc,
+    })
 
-    st.caption("""
-    A well-balanced risk profile avoids concentration in a small number of assets 
-    or asset classes.
-    """)
+    rc_df_display = (
+        rc_df
+        .assign(Risk_contr_pct=lambda df: (df["Risk Contribution"] * 100).round(2))
+        .sort_values("Risk_contr_pct", ascending=False)
+        [["Asset", "Category", "Risk_contr_pct"]]
+        .rename(columns={"Risk_contr_pct": "Risk contribution (%)"})
+    )
 
-    # ---- 2) Capital vs Risk: 2 bars per asset (small multiples) ----
-    st.subheader("Capital vs Risk")
+    st.dataframe(rc_df_display, use_container_width=True)
+    st.caption("Risk contributions are normalised to sum to 100% across all assets.")
+
+    # ----------------------------------------
+    # B. CAPITAL VS RISK (BY ASSET)
+    # ----------------------------------------
+    st.subheader("B. Capital vs risk by asset")
 
     alloc_df_full = pd.DataFrame({
         "Asset": filtered_tickers,
         "Weight": opt_weights,
-        "Risk Contribution": final_rc
+        "Risk Contribution": final_rc,
     })
     alloc_df_full = alloc_df_full[alloc_df_full["Weight"] > 0.001]
 
-    # ordre des actifs (par exemple décroissant en Weight)
-    alloc_df_full = alloc_df_full.sort_values("Weight", ascending=False)
-    asset_order = list(alloc_df_full["Asset"])
+    melted_df = alloc_df_full.melt("Asset", var_name="Metric", value_name="Value")
 
-    melted_df = alloc_df_full.melt(
-        id_vars="Asset",
-        value_vars=["Weight", "Risk Contribution"],
-        var_name="Metric",
-        value_name="Value"
-    )
-
-    base_chart = (
+    cap_risk_chart = (
         alt.Chart(melted_df)
         .mark_bar()
         .encode(
-            x=alt.X(
-                "Value:Q",
-                axis=alt.Axis(format="%", title="Percentage of Portfolio"),
-                scale=alt.Scale(domain=[0, float(melted_df["Value"].max()) * 1.1])
-            ),
-            y=alt.Y(
-                "Metric:N",
-                sort=["Risk Contribution", "Weight"],
-                axis=None
-            ),
-            color=alt.Color(
-                "Metric:N",
-                scale=alt.Scale(
-                    domain=["Weight", "Risk Contribution"],
-                    range=["#87CEFA", "#1F77B4"]
-                ),
-                legend=alt.Legend(title="Metric")
-            ),
+            y=alt.Y("Asset:N", sort="-x"),
+            x=alt.X("Value:Q", axis=alt.Axis(format="%", title="Share of portfolio")),
+            color=alt.Color("Metric:N", legend=alt.Legend(title="Metric")),
             tooltip=[
-                alt.Tooltip("Asset"),
-                alt.Tooltip("Metric"),
-                alt.Tooltip("Value", format=".1%")
-            ]
+                alt.Tooltip("Asset:N"),
+                alt.Tooltip("Metric:N"),
+                alt.Tooltip("Value:Q", format=".1%", title="Share"),
+            ],
         )
-        .properties(height=40)
+        .properties(height=360)
     )
 
-    # une ligne (facette) par asset : deux barres l’une au-dessus de l’autre
-    per_asset = base_chart.facet(
-        row=alt.Row("Asset:N", sort=asset_order, title=None),
-        spacing=8
-    ).resolve_scale(x="shared")
-
-    st.altair_chart(per_asset, use_container_width=True)
+    st.altair_chart(cap_risk_chart, use_container_width=True)
 
     st.caption("""
-    For each asset, the top bar shows its Risk Contribution and the bottom bar 
-    shows its Weight (capital allocation). This makes it easy to compare risk 
-    vs capital asset by asset.
+    Bars show how much **capital** is allocated to each asset (Weight) versus how 
+    much **risk** it contributes (Risk Contribution). Large differences highlight 
+    assets that drive risk disproportionately to their capital allocation.
+    """)
+
+    # ----------------------------------------
+    # C. RISK BY ASSET CLASS
+    # ----------------------------------------
+    st.subheader("C. Risk distribution by asset class")
+
+    rc_with_cat = rc_df.assign(Category=lambda df: df["Category"].fillna("Unclassified"))
+
+    rc_by_class = (
+        rc_with_cat
+        .groupby("Category", as_index=False)
+        .agg({"Risk Contribution": "sum"})
+        .assign(Risk_contr_pct=lambda df: (df["Risk Contribution"] * 100).round(2))
+        .rename(columns={"Risk_contr_pct": "Risk contribution (%)"})
+        .sort_values("Risk contribution (%)", ascending=False)
+    )
+
+    st.dataframe(
+        rc_by_class[["Category", "Risk contribution (%)"]],
+        use_container_width=True,
+    )
+
+    class_risk_chart = (
+        alt.Chart(rc_by_class)
+        .mark_bar()
+        .encode(
+            x=alt.X("Risk contribution (%):Q", title="Risk contribution (%)"),
+            y=alt.Y("Category:N", sort="-x"),
+            tooltip=[
+                alt.Tooltip("Category:N"),
+                alt.Tooltip("Risk contribution (%):Q", format=".1f"),
+            ],
+        )
+        .properties(height=320)
+    )
+
+    st.altair_chart(class_risk_chart, use_container_width=True)
+
+    # ----------------------------------------
+    # D. RISK CONCENTRATION INDICATORS
+    # ----------------------------------------
+    st.subheader("D. Risk concentration indicators")
+
+    rc_sorted = rc_df_display.sort_values("Risk contribution (%)", ascending=False)
+    top1_rc = float(rc_sorted["Risk contribution (%)"].iloc[0])
+    top1_name = rc_sorted["Asset"].iloc[0]
+    top3_rc = float(rc_sorted["Risk contribution (%)"].head(3).sum())
+
+    c1, c2 = st.columns(2)
+    c1.metric("Largest single-asset risk share", f"{top1_rc:.1f}%", help=top1_name)
+    c2.metric("Top 3 assets – share of risk", f"{top3_rc:.1f}%")
+
+    st.caption("""
+    These indicators summarise whether portfolio risk is dominated by a small number 
+    of positions. For institutional investors, concentration thresholds can be set 
+    at the mandate level (e.g. “no single asset to exceed 20% of risk”).
     """)
 
 # ============================================================
-#  TAB 4 — SCENARIO & HISTORICAL ANALYSIS
+#  TAB 4 — SCENARIO ANALYSIS
 # ============================================================
 with tab4:
     st.header("Scenario Analysis")
 
     st.write("""
-    This section illustrates how the portfolio may evolve over time under 
-    different forward-looking assumptions, and reviews its historical behaviour.
+    This tab illustrates how the portfolio may evolve under simple forward-looking 
+    scenarios, and reviews the historical performance and risk profile.
     """)
 
     # ----------------------------------------
     # A. LONG-TERM RETURN SCENARIOS
     # ----------------------------------------
-    st.subheader("A. Long-Term Return Scenarios (μ, μ±σ)")
+    st.subheader("A. Long-term return scenarios (μ, μ±σ)")
 
     exp_r = float(exp_ret)
     vol_r = float(final_vol)
     years = time_horizon_years
 
-    # Scenario values
     central_growth = (1 + exp_r) ** years
-    down_growth    = max(1 + exp_r - vol_r, 0) ** years
-    up_growth      = (1 + exp_r + vol_r) ** years
+    down_growth = max(1 + exp_r - vol_r, 0) ** years
+    up_growth = (1 + exp_r + vol_r) ** years
 
     scenario_df = pd.DataFrame({
         "Scenario": ["Downside (μ − σ)", "Central (μ)", "Upside (μ + σ)"],
-        "Annualised Return": [
+        "Annualised Return (%)": [
             (exp_r - vol_r) * 100,
             exp_r * 100,
             (exp_r + vol_r) * 100
@@ -843,88 +928,138 @@ with tab4:
         **{"Projected Value": lambda df: df["Projected Value"].round(0)}
     )
 
-    st.dataframe(
-        scenario_df,
-        use_container_width=True
-    )
+    st.dataframe(scenario_df, use_container_width=True)
+    st.caption("Scenarios are illustrative and not forecasts, but provide a range for potential long-term outcomes.")
 
-    st.caption("These scenarios are not forecasts, but illustrate potential ranges for long-term outcomes.")
-
+    st.divider()
 
     # ----------------------------------------
     # B. HISTORICAL PERFORMANCE
     # ----------------------------------------
-    st.subheader("B. Historical Performance (vs Equal-Weight Benchmark)")
+    st.subheader("B. Historical performance vs equal-weight benchmark")
 
     n_assets = len(filtered_tickers)
-    eq_w = np.array([1/n_assets] * n_assets)
+    eq_w = np.array([1 / n_assets] * n_assets)
 
     cum_opt = (1 + returns_df.dot(opt_weights)).cumprod()
-    cum_eq  = (1 + returns_df.dot(eq_w)).cumprod()
+    cum_eq = (1 + returns_df.dot(eq_w)).cumprod()
 
     hist_data = pd.DataFrame({
         "Date": returns_df.index,
-        "Selected Strategy": cum_opt,
-        "Equal Weight Benchmark": cum_eq
+        "Optimised strategy": cum_opt,
+        "Equal-weight benchmark": cum_eq
     })
 
     hist_melted = hist_data.melt("Date", var_name="Strategy", value_name="Cumulative Return")
 
-    perf_chart = alt.Chart(hist_melted).mark_line(strokeWidth=2).encode(
-        x=alt.X("Date:T", axis=alt.Axis(title="Date")),
-        y=alt.Y("Cumulative Return:Q", axis=alt.Axis(title="Growth of 1")),
-        color=alt.Color("Strategy:N"),
-        tooltip=[
-            alt.Tooltip("Date", format="%b %Y"),
-            "Strategy",
-            alt.Tooltip("Cumulative Return", format=".2f")
-        ]
-    ).properties(height=350).interactive()
+    perf_chart = (
+        alt.Chart(hist_melted)
+        .mark_line(strokeWidth=2)
+        .encode(
+            x=alt.X("Date:T", axis=alt.Axis(title="Date")),
+            y=alt.Y("Cumulative Return:Q", axis=alt.Axis(title="Growth of 1")),
+            color=alt.Color("Strategy:N"),
+            tooltip=[
+                alt.Tooltip("Date:T", format="%b %Y"),
+                "Strategy:N",
+                alt.Tooltip("Cumulative Return:Q", format=".2f")
+            ],
+        )
+        .properties(height=350)
+        .interactive()
+    )
 
     st.altair_chart(perf_chart, use_container_width=True)
 
+    st.divider()
 
     # ----------------------------------------
-    # C. DYNAMIC RISK
+    # C. DYNAMIC RISK ANALYSIS (ROLLING VOL)
     # ----------------------------------------
-    st.subheader("C. Rolling Volatility (Dynamic Risk)")
+    st.subheader("C. Dynamic Risk Analysis (Rolling Volatility)")
 
-    window = st.slider("Rolling window (months):", 3, 36, 12, key="scenario_rolling_win")
+    st.write("""
+Rolling volatility provides insight into how portfolio risk evolved over time.
+A smoother profile indicates stable risk, whereas spikes reflect periods of stress.
+    """)
 
-    port_returns = returns_df.dot(opt_weights)
-    rolling_port_vol = port_returns.rolling(window).std() * np.sqrt(12)
+    window = st.slider(
+        "Rolling window (months)",
+        min_value=3,
+        max_value=36,
+        value=12,
+        step=1,
+        key="scenario_rolling_win",
+        help="Window length used to compute rolling volatility."
+    )
 
-    vol_df = pd.DataFrame({
-        "Date": rolling_port_vol.index,
-        "Rolling Volatility": rolling_port_vol
+    rolling_port_vol = (
+        returns_df.dot(opt_weights)
+        .rolling(window=window)
+        .std()
+        * np.sqrt(12)
+    )
+
+    asset_rolling_vol = returns_df.rolling(window=window).std() * np.sqrt(12)
+    max_vol_asset = asset_rolling_vol.mean().idxmax()
+    rolling_max_vol = asset_rolling_vol[max_vol_asset]
+
+    vol_plot_df = pd.DataFrame({
+        "Date": returns_df.index,
+        "Portfolio rolling vol": rolling_port_vol,
+        f"{max_vol_asset} rolling vol": rolling_max_vol,
     })
 
-    vol_chart = alt.Chart(vol_df).mark_line(strokeWidth=2).encode(
-        x=alt.X("Date:T", axis=alt.Axis(title="Date")),
-        y=alt.Y("Rolling Volatility:Q", axis=alt.Axis(format="%", title="Volatility")),
-        tooltip=[
-            alt.Tooltip("Date", format="%b %Y"),
-            alt.Tooltip("Rolling Volatility", format=".2%")
-        ]
-    ).properties(height=300).interactive()
+    vol_melted = vol_plot_df.melt("Date", var_name="Series", value_name="Volatility")
 
-    st.altair_chart(vol_chart, use_container_width=True)
+    unique_years = sorted(returns_df.index.year.unique())
+    tick_values = [pd.Timestamp(f"{y}-01-01") for y in unique_years]
 
-    st.caption("Rolling volatility captures how risk evolves through time.")
+    dynamic_risk_chart = (
+        alt.Chart(vol_melted)
+        .mark_line(strokeWidth=2)
+        .encode(
+            x=alt.X(
+                "Date:T",
+                axis=alt.Axis(
+                    title="Year",
+                    format="%Y",
+                    values=tick_values,
+                    grid=True
+                )
+            ),
+            y=alt.Y(
+                "Volatility:Q",
+                axis=alt.Axis(format="%", title="Annualised volatility"),
+            ),
+            color=alt.Color(
+                "Series:N",
+                legend=alt.Legend(title="Series"),
+                scale=alt.Scale(scheme="tableau10")
+            ),
+            tooltip=[
+                alt.Tooltip("Date:T", format="%b %Y"),
+                "Series:N",
+                alt.Tooltip("Volatility:Q", format=".2%"),
+            ],
+        )
+        .properties(height=350)
+        .interactive()
+    )
 
-
+    st.altair_chart(dynamic_risk_chart, use_container_width=True)
+    st.caption("The portfolio's rolling volatility is compared against the riskiest underlying asset over the same period.")
 
 # ============================================================
-#  TAB 5 — IMPLEMENTATION & REBALANCING (avec portefeuille courant)
+#  TAB 5 — IMPLEMENTATION & REBALANCING
 # ============================================================
 with tab5:
     st.header("Implementation & Rebalancing")
 
     st.write("""
-    This section turns the optimised allocation into **practical rebalancing guidance**.
-    The investor can provide a **current portfolio** (weights by asset) via CSV upload.
-    If no file is provided, an equal-weight portfolio in the selected assets is used as
-    the current implementation.
+    This tab translates the optimised allocation into **practical rebalancing guidance**.
+    The investor can provide a current portfolio via CSV; if no file is uploaded,
+    an equal-weight portfolio is assumed as the current implementation.
     """)
 
     # --------------------------------------------------------
@@ -951,7 +1086,7 @@ with tab5:
         st.warning("No assets selected for implementation.")
         st.stop()
 
-    # --- Example CSV to download (helps the user) ---
+    # Example CSV template
     example_df = pd.DataFrame({
         "Asset": filtered_tickers,
         "Weight": [round(1.0 / n_assets_impl, 4)] * n_assets_impl
@@ -966,18 +1101,15 @@ with tab5:
         help="Use this file as a template: adjust the Weight column to match the current portfolio."
     )
 
-    # --- Build current_w from CSV if available, else fallback to equal-weight ---
+    # --- Build current_w from CSV if available, else equal-weight ---
     current_w_source = "equal-weight (fallback)"
 
     if uploaded_portfolio is not None:
         try:
             pf_df = pd.read_csv(uploaded_portfolio)
-
-            # Clean column names
             pf_df.columns = [c.strip().lower() for c in pf_df.columns]
 
             if "asset" in pf_df.columns and "weight" in pf_df.columns:
-                # Map asset -> weight
                 w_map = (
                     pf_df[["asset", "weight"]]
                     .copy()
@@ -985,11 +1117,7 @@ with tab5:
                     .groupby("asset", as_index=True)["weight"]
                     .sum()
                 )
-
-                # Build weight vector aligned with filtered_tickers
-                w_list = []
-                for t in filtered_tickers:
-                    w_list.append(float(w_map.get(t, 0.0)))
+                w_list = [float(w_map.get(t, 0.0)) for t in filtered_tickers]
                 current_w = np.array(w_list, dtype=float)
 
                 if current_w.sum() > 0:
@@ -1007,7 +1135,6 @@ with tab5:
                     "Falling back to an equal-weight current portfolio."
                 )
                 current_w = np.array([1.0 / n_assets_impl] * n_assets_impl)
-
         except Exception as e:
             st.warning(
                 f"Could not read current portfolio from CSV ({e}). "
@@ -1015,23 +1142,19 @@ with tab5:
             )
             current_w = np.array([1.0 / n_assets_impl] * n_assets_impl)
     else:
-        # No file → equal-weight
         current_w = np.array([1.0 / n_assets_impl] * n_assets_impl)
 
     st.caption(f"Current portfolio source: **{current_w_source}**.")
 
-
     # --------------------------------------------------------
-    # 1. Define target portfolio and drift
+    # 1. Drift & risk comparison
     # --------------------------------------------------------
-    target_w = opt_weights  # from the optimisation step above
-
-    # Sanity: normalise target_w just in case numerical drift
+    target_w = opt_weights.copy()
     if not np.isclose(target_w.sum(), 1.0):
         target_w = target_w / target_w.sum()
 
     delta_w = target_w - current_w
-    delta_pp = delta_w * 100.0  # change in percentage points
+    delta_pp = delta_w * 100.0
 
     abs_delta_pp = np.abs(delta_pp)
     max_drift_idx = int(abs_delta_pp.argmax())
@@ -1041,22 +1164,16 @@ with tab5:
     drift_threshold_pp = 3.0
     n_breaches = int((abs_delta_pp > drift_threshold_pp).sum())
 
-    # Risk metrics: current vs target
     vol_current_impl = calculate_portfolio_vol(current_w, Sigma)
     vol_target_impl = final_vol
 
-    # --- Summary metrics row ---
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric(
-        "Max drift (pp)",
-        f"{max_drift_pp:+.1f}",
-        help="Largest deviation between current and target weights (percentage points).",
-    )
-    col2.metric("Average drift (pp)", f"{avg_drift_pp:.1f}")
-    col3.metric("# Assets above drift threshold", f"{n_breaches} / {n_assets_impl}")
-    col4.metric(
+    s1, s2, s3, s4 = st.columns(4)
+    s1.metric("Max drift (pp)", f"{max_drift_pp:+.1f}")
+    s2.metric("Average drift (pp)", f"{avg_drift_pp:.1f}")
+    s3.metric("# assets above drift threshold", f"{n_breaches} / {n_assets_impl}")
+    s4.metric(
         "Volatility: current → target",
-        f"{vol_current_impl*100:.1f}% → {vol_target_impl*100:.1f}%",
+        f"{vol_current_impl*100:.1f}% → {vol_target_impl*100:.1f}%"
     )
 
     if n_breaches > 0:
@@ -1075,9 +1192,9 @@ with tab5:
     st.divider()
 
     # --------------------------------------------------------
-    # 2. Trade blotter (Top 5 + full CSV)
+    # 2. Suggested trades & trade blotter
     # --------------------------------------------------------
-    st.subheader("Suggested trades (from current portfolio to target allocation)")
+    st.subheader("Suggested trades (from current to target allocation)")
 
     trade_amounts = delta_w * investment_amount
 
@@ -1114,8 +1231,8 @@ with tab5:
 
         st.caption("""
         Positive trade amounts correspond to **buys**, negative amounts to **sells**.
-        Weight changes are expressed in **percentage points** (pp) relative to the
-        uploaded current portfolio (or the equal-weight fallback).
+        Changes in weights are expressed in **percentage points** relative to the
+        current portfolio (or equal-weight fallback).
         """)
 
         st.markdown("**Full trade blotter**")
@@ -1130,7 +1247,7 @@ with tab5:
     st.divider()
 
     # --------------------------------------------------------
-    # 3. Turnover & simple cost estimate
+    # 3. Turnover & estimated trading cost
     # --------------------------------------------------------
     st.subheader("Turnover & estimated trading cost")
 
@@ -1138,13 +1255,13 @@ with tab5:
     cost_bps = 20.0
     est_trading_cost = gross_turnover * (cost_bps / 10000.0) * investment_amount
 
-    c_to1, c_to2, c_to3 = st.columns(3)
-    c_to1.metric("Gross turnover", f"{gross_turnover*100:.1f}%")
-    c_to2.metric("Cost assumption", f"{cost_bps:.0f} bps")
-    c_to3.metric("Estimated trading cost", f"{est_trading_cost:,.0f}")
+    t1, t2, t3 = st.columns(3)
+    t1.metric("Gross turnover", f"{gross_turnover*100:.1f}%")
+    t2.metric("Cost assumption", f"{cost_bps:.0f} bps")
+    t3.metric("Estimated trading cost", f"{est_trading_cost:,.0f}")
 
     st.caption("""
-    Turnover is defined as the sum of absolute trade notionals divided by the total portfolio value.
+    Turnover is defined as the sum of absolute trade notionals divided by total portfolio value.
     The cost estimate is illustrative and based on a flat spread + impact assumption (20 bps total).
     """)
 
@@ -1163,18 +1280,18 @@ with tab5:
     elif rebalance_label == "Quarterly":
         last_reb = today_ts - pd.offsets.QuarterEnd(1)
         next_reb = today_ts + pd.offsets.QuarterEnd(1)
-    else:
+    else:  # Yearly
         last_reb = today_ts - pd.offsets.YearEnd(1)
         next_reb = today_ts + pd.offsets.YearEnd(1)
 
-    c_date1, c_date2 = st.columns(2)
-    with c_date1:
+    d1, d2 = st.columns(2)
+    with d1:
         st.markdown("**Last rebalance (approx.)**")
         st.write(last_reb.date())
         st.markdown("**Next expected rebalance window**")
         st.write(next_reb.date())
 
-    with c_date2:
+    with d2:
         st.markdown("**Policy reminder**")
         st.markdown(f"""
         • **Frequency:** {rebalance_label}  
@@ -1184,8 +1301,7 @@ with tab5:
         """)
 
     st.caption("""
-    Dates above are indicative and based on the selected backtest frequency.
-    In practice, the investment committee may also trigger off-cycle rebalancing
-    when market moves cause drifts or risk metrics to breach policy limits.
+    Dates are indicative and based on the selected backtest frequency. In practice, 
+    the investment committee may also trigger off-cycle rebalancing when market moves 
+    cause drifts or risk metrics to breach policy limits.
     """)
-
