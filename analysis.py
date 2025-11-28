@@ -590,49 +590,91 @@ with tab2:
     st.altair_chart(pie, use_container_width=True)
 
     
-        # --- 3) Geographic exposure (by region) ---
-    st.subheader("Geographic exposure (by region)")
+            # --- 3) Geographic & asset-class mix ---
+    st.subheader("Geographic exposure by asset class")
 
     st.caption("""
-    Exposure is grouped by the main economic region of each ETF's underlying index 
-    (e.g. United States, Europe, Emerging Markets), not by listing venue or currency.
+    This view shows how the portfolio's risk budget is distributed **by region** 
+    and **by major asset class** (Equities, Bonds, Real Assets, etc.).
     """)
 
-    geo_df = (
-        alloc_df
-        .assign(
-            Amount=lambda df: df["Weight"] * investment_amount
-        )
-        .groupby("Region", as_index=False)
-        .agg({"Weight": "sum", "Amount": "sum"})
-        .assign(
-            Weight_pct=lambda df: (df["Weight"] * 100).round(2),
-            Amount=lambda df: df["Amount"].round(0),
-        )
-        [["Region", "Weight_pct", "Amount"]]
-        .rename(columns={"Weight_pct": "Weight (%)"})
-        .sort_values("Weight (%)", ascending=False)
+    # Helper: map detailed Category to a broad asset class label
+    def classify_asset_class(cat: str) -> str:
+        c = (cat or "").lower()
+        if "equities" in c or "equity" in c or "stock" in c:
+            return "Equities"
+        if "bonds" in c or "fixed income" in c:
+            return "Bonds"
+        if "real estate" in c or "reit" in c:
+            return "Real Assets"
+        if "commodities" in c or "gold" in c or "silver" in c or "oil" in c:
+            return "Commodities"
+        if "crypto" in c or "bitcoin" in c or "ethereum" in c:
+            return "Crypto"
+        return "Other"
+
+    # Add a broad asset-class label
+    geo_ac_df = alloc_df.assign(
+        AssetClass=lambda df: df["Category"].apply(classify_asset_class)
     )
 
-    st.dataframe(geo_df, use_container_width=True)
+    # Aggregate weights by Region × AssetClass
+    region_ac = (
+        geo_ac_df
+        .groupby(["Region", "AssetClass"], as_index=False)
+        .agg({"Weight": "sum"})
+    )
+    region_ac["Weight_pct"] = region_ac["Weight"] * 100
 
-    # (optionnel) petit bar chart horizontal pour visualiser
-    geo_chart = (
-        alt.Chart(geo_df)
+    # --- 3a) Matrix table (Region x Asset Class) ---
+    matrix = (
+        region_ac
+        .pivot(index="Region", columns="AssetClass", values="Weight_pct")
+        .fillna(0)
+        .round(1)
+    )
+    matrix["Total (%)"] = matrix.sum(axis=1).round(1)
+    matrix = matrix.reset_index()
+
+    st.dataframe(matrix, use_container_width=True)
+
+    st.caption("""
+    Rows sum to the **total regional weight** in the portfolio. Columns show how 
+    much of that regional exposure comes from Equities, Bonds, Real Assets, etc.
+    """)
+
+    # --- 3b) Stacked bar chart by Region & Asset Class ---
+    stacked_chart = (
+        alt.Chart(region_ac)
         .mark_bar()
         .encode(
-            x=alt.X("Weight (%)", title="Weight (%)"),
-            y=alt.Y("Region", sort="-x"),
-            tooltip=["Region", alt.Tooltip("Weight (%)", format=".1f"), "Amount"],
+            x=alt.X(
+                "sum(Weight):Q",
+                stack="normalize",
+                axis=alt.Axis(format="%", title="Share of portfolio")
+            ),
+            y=alt.Y("Region:N", sort="-x"),
+            color=alt.Color(
+                "AssetClass:N",
+                legend=alt.Legend(title="Asset class")
+            ),
+            tooltip=[
+                alt.Tooltip("Region:N"),
+                alt.Tooltip("AssetClass:N", title="Asset class"),
+                alt.Tooltip("Weight_pct:Q", format=".1f", title="Weight (%)"),
+            ],
         )
         .properties(height=260)
     )
-    st.altair_chart(geo_chart, use_container_width=True)
+
+    st.altair_chart(stacked_chart, use_container_width=True)
 
     st.caption("""
-    This table summarises the portfolio's regional footprint. 
-    Detailed holdings remain visible in the Strategic Allocation table above.
+    Each bar represents a **region**; colours show how that region is split across 
+    Equities, Bonds and other asset classes. This highlights, for example, 
+    whether Emerging Markets exposure is primarily equity-driven or bond-driven.
     """)
+
 
     
 
