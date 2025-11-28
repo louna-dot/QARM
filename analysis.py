@@ -928,46 +928,50 @@ with tab4:
     holding the risk model constant.
     """)
 
-    # ---------- A3. Key allocation changes: only Δ in pp ----------
-    st.subheader("A3. Key allocation changes (Δ in percentage points)")
+    # --- A3. Indicative trades (by instrument) ---
+    st.subheader("A3. Indicative trades by instrument")
 
-    changes_df = pd.DataFrame({
+    # base = portefeuille courant (opt_weights), scenario = portefeuille sous scénario
+    base_w = opt_weights
+    scen_w = scenario_weights  # <- le vecteur de poids sous scénario que tu as déjà calculé
+
+    delta_w = scen_w - base_w
+
+    trades_df = pd.DataFrame({
         "Asset": filtered_tickers,
-        "Bucket": alloc_df["Bucket"].values,
-        "Base Weight": base_weights,
-        "Scenario Weight": scenario_weights,
+        "Current weight (%)": (base_w * 100).round(1),
+        "Scenario weight (%)": (scen_w * 100).round(1),
+        "Change (pp)": (delta_w * 100).round(1),
+        "Direction": np.where(delta_w > 0, "Buy", "Sell"),
+        "Indicative trade (amount)": (np.abs(delta_w) * investment_amount).round(0),
     })
-    # Δ en points de %
-    changes_df["Change (pp)"] = (changes_df["Scenario Weight"] - changes_df["Base Weight"]) * 100
-    changes_df["Abs Change"] = changes_df["Change (pp)"].abs()
-    changes_df["Direction"] = np.where(changes_df["Change (pp)"] > 0, "Increase", "Decrease")
-    # Notional indicatif associé à la variation
-    changes_df["Approx. Trade Amount"] = (changes_df["Change (pp)"] / 100.0 * investment_amount)
 
-    top_changes = changes_df.sort_values("Abs Change", ascending=False).head(6)
+    # on enlève les micro-trades pour la lisibilité
+    trades_df = trades_df[np.abs(trades_df["Change (pp)"]) > 0.1]
 
-    st.caption("""
-    Largest changes in allocation, expressed in **percentage points of portfolio weight**.  
-    Detailed weights by asset are shown in the *Portfolio Construction* tab.
-    """)
+    # on ordonne par taille de trade décroissante
+    trades_df = trades_df.sort_values("Indicative trade (amount)", ascending=False)
 
-    display_changes = (
-        top_changes[["Asset", "Bucket", "Direction", "Change (pp)", "Approx. Trade Amount"]]
-        .assign(
-            **{
-                "Change (pp)":       lambda df: df["Change (pp)"].round(2),
-                "Approx. Trade Amount": lambda df: df["Approx. Trade Amount"].round(0),
-            }
-        )
-        .rename(columns={
-            "Change (pp)": "Δ Weight (pp)",
-            "Approx. Trade Amount": "Indicative Trade (Amount)",
-        })
+    st.dataframe(
+        trades_df[
+            ["Asset",
+             "Direction",
+             "Indicative trade (amount)",
+             "Current weight (%)",
+             "Scenario weight (%)",
+             "Change (pp)"]
+        ],
+        use_container_width=True,
     )
 
-    st.dataframe(display_changes, use_container_width=True)
+    st.caption("""
+    This table summarises **indicative rebalancing trades** to move from the 
+    current portfolio to the selected scenario: direction (Buy/Sell), 
+    trade size in base currency, and resulting target weights.
+    """)
 
-    st.markdown("---")
+
+    
 
     # ========================================================
     #  B. HISTORICAL BACKTEST & REALISED RISK (PAST VIEW)
