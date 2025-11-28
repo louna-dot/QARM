@@ -747,103 +747,211 @@ with tab4:
     st.header("Scenario Analysis")
 
     st.write("""
-    This tab illustrates how the portfolio could evolve over the investor’s horizon 
-    under different return and volatility assumptions, and reviews the historical 
-    behaviour of the strategy.
+    This tab explores how the portfolio might react under simple what-if scenarios.  
+    We keep the optimisation logic fixed and apply intuitive tilts between 
+    broad asset buckets (Equities vs Bonds & Gold), then compare the resulting 
+    allocation and risk/return profile to the base case.
     """)
 
-    # ---- 1) Long-term projection scenarios ----
-    st.subheader("Long-Term Projection Scenarios")
+    # Helper: map detailed categories to broad buckets
+    def map_to_bucket(cat: str) -> str:
+        if "Equities" in cat:
+            return "Equities"
+        elif "Bonds" in cat:
+            return "Bonds"
+        elif "Gold" in cat:
+            return "Gold"
+        elif "Real Estate" in cat:
+            return "Real Estate"
+        elif "Crypto" in cat:
+            return "Crypto"
+        else:
+            return "Other"
 
-    exp_return = float(exp_ret)
-    exp_vol = float(final_vol)
-    years = time_horizon_years
+    alloc_df["Bucket"] = alloc_df["Category"].apply(map_to_bucket)
 
-    exp_growth = (1 + exp_return) ** years
-    down_growth = max((1 + exp_return - exp_vol), 0) ** years
-    up_growth = (1 + exp_return + exp_vol) ** years
+    st.subheader("1. Scenario selection")
 
-    base_final = investment_amount * exp_growth
-    down_final = investment_amount * down_growth
-    up_final = investment_amount * up_growth
-
-    proj_df = pd.DataFrame({
-        "Scenario": ["Downside (μ - σ)", "Central (μ)", "Upside (μ + σ)"],
-        "Projected amount": [down_final, base_final, up_final]
-    })
-
-    st.dataframe(
-        proj_df.assign(**{"Projected amount": lambda df: df["Projected amount"].round(0)}),
-        use_container_width=True
+    scenario_choice = st.selectbox(
+        "Select scenario:",
+        [
+            "Base case (current optimisation)",
+            "Risk-off: rotate 10% from Equities into Bonds & Gold",
+            "Risk-on: rotate 10% from Bonds into Equities",
+        ],
     )
 
+    shift_share = 0.10  # 10% of the total portfolio
+    base_weights = opt_weights.copy()
+    scenario_weights = base_weights.copy()
+
+    buckets = alloc_df["Bucket"].values
+
+    if scenario_choice != "Base case (current optimisation)":
+        w = base_weights.copy()
+
+        eq_idx = np.where(buckets == "Equities")[0]
+        bond_idx = np.where(buckets == "Bonds")[0]
+        gold_idx = np.where(buckets == "Gold")[0]
+
+        total_equity = w[eq_idx].sum() if len(eq_idx) > 0 else 0.0
+        total_bond = w[bond_idx].sum() if len(bond_idx) > 0 else 0.0
+
+        if scenario_choice.startswith("Risk-off") and total_equity > 0:
+            # Move capital from Equities to Bonds & Gold
+            shift = min(shift_share, total_equity)
+
+            # Reduce equities proportionally
+            if len(eq_idx) > 0:
+                w[eq_idx] *= (total_equity - shift) / total_equity
+
+            # Increase Bonds + Gold proportionally
+            dest_idx = np.concatenate([bond_idx, gold_idx])
+            if len(dest_idx) > 0:
+                dest_weights = w[dest_idx]
+                dest_weights = dest_weights + shift * dest_weights / dest_weights.sum()
+                w[dest_idx] = dest_weights
+
+        elif scenario_choice.startswith("Risk-on") and total_bond > 0:
+            # Move capital from Bonds to Equities
+            shift = min(shift_share, total_bond)
+
+            if len(bond_idx) > 0:
+                w[bond_idx] *= (total_bond - shift) / total_bond
+
+            if len(eq_idx) > 0:
+                dest_weights = w[eq_idx]
+                dest_weights = dest_weights + shift * dest_weights / dest_weights.sum()
+                w[eq_idx] = dest_weights
+
+        # Renormalise in case of numerical drift
+        scenario_weights = w / w.sum()
+    else:
+        scenario_weights = base_weights.copy()
+
+    # ---- Compute scenario stats ----
+    base_ret = float(exp_ret)
+    base_vol = float(final_vol)
+    base_es = float(final_es_metric)
+
+    scen_ret = float(np.dot(scenario_weights, mu))
+    scen_vol = float(calculate_portfolio_vol(scenario_weights, Sigma))
+    scen_es = float(calculate_portfolio_es(scenario_weights, returns_df, alpha_input))
+
+    st.subheader("2. Impact on key portfolio metrics")
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric(
+        "Expected Return (p.a.)",
+        f"{scen_ret*100:.1f}%",
+        delta=f"{(scen_ret - base_ret)*100:.1f} pp",
+    )
+    c2.metric(
+        "Expected Volatility",
+        f"{scen_vol*100:.1f}%",
+        delta=f"{(scen_vol - base_vol)*100:.1f} pp",
+    )
+    c3.metric(
+        f"Expected Shortfall ({int(alpha_input*100)}%)",
+        f"{scen_es*100:.1f}%",
+        delta=f"{(scen_es - base_es)*100:.1f} pp",
+    )
+
+    st.caption("Changes (delta) are expressed in percentage points relative to the base case.")
+
+    # ---- 3. Key allocation changes (top movers) ----
+    st.subheader("3. Key allocation changes")
+
+    changes_df = pd.DataFrame({
+        "Asset": filtered_tickers,
+        "Bucket": alloc_df["Bucket"].values,
+        "Base Weight": base_weights,
+        "Scenario Weight": scenario_weights,
+    })
+    changes_df["Change (pp)"] = (changes_df["Scenario Weight"] - changes_df["Base Weight"]) * 100
+    changes_df["Abs Change"] = changes_df["Change (pp)"].abs()
+
+    top_changes = changes_df.sort_values("Abs Change", ascending=False).head(6)
+
+    st.caption("Top allocation shifts by instrument (in percentage points).")
+    st.dataframe(
+        top_changes[["Asset", "Bucket", "Base Weight", "Scenario Weight", "Change (pp)"]]
+        .assign(
+            **{
+                "Base Weight": lambda df: (df["Base Weight"] * 100).round(2),
+                "Scenario Weight": lambda df: (df["Scenario Weight"] * 100).round(2),
+                "Change (pp)": lambda df: df["Change (pp)"].round(2),
+            }
+        )
+        .rename(columns={
+            "Base Weight": "Base Weight (%)",
+            "Scenario Weight": "Scenario Weight (%)",
+        }),
+        use_container_width=True,
+    )
+
+    # ---- 4. Current vs Scenario pies by bucket ----
+    st.subheader("4. Current vs scenario allocation (by bucket)")
+
+    bucket_base = (
+        alloc_df
+        .assign(BaseWeight=base_weights, ScenarioWeight=scenario_weights)
+        .groupby("Bucket", as_index=False)[["BaseWeight", "ScenarioWeight"]]
+        .sum()
+    )
+
+    base_long = bucket_base[["Bucket", "BaseWeight"]].rename(columns={"BaseWeight": "Weight"})
+    base_long["View"] = "Base"
+
+    scen_long = bucket_base[["Bucket", "ScenarioWeight"]].rename(columns={"ScenarioWeight": "Weight"})
+    scen_long["View"] = "Scenario"
+
+    pies_data = pd.concat([base_long, scen_long], ignore_index=True)
+
+    pies_chart = (
+        alt.Chart(pies_data)
+        .mark_arc(innerRadius=50)
+        .encode(
+            theta=alt.Theta("Weight:Q", stack=True),
+            color=alt.Color("Bucket:N", legend=alt.Legend(title="Bucket")),
+            column=alt.Column("View:N", title=None),
+            tooltip=[
+                alt.Tooltip("View"),
+                alt.Tooltip("Bucket"),
+                alt.Tooltip("Weight", format=".1%"),
+            ],
+        )
+        .properties(height=250)
+    )
+
+    st.altair_chart(pies_chart, use_container_width=True)
+
+    # ---- 5. Detailed scenario allocation table ----
+    st.subheader("5. Detailed scenario allocation (by instrument)")
+
+    detailed = (
+        changes_df[["Asset", "Bucket", "Base Weight", "Scenario Weight", "Change (pp)"]]
+        .assign(
+            BaseWeightPct=lambda df: (df["Base Weight"] * 100).round(2),
+            ScenarioWeightPct=lambda df: (df["Scenario Weight"] * 100).round(2),
+            Change_pp=lambda df: df["Change (pp)"].round(2),
+        )[["Asset", "Bucket", "BaseWeightPct", "ScenarioWeightPct", "Change_pp"]]
+        .rename(columns={
+            "BaseWeightPct": "Base Weight (%)",
+            "ScenarioWeightPct": "Scenario Weight (%)",
+            "Change_pp": "Change (pp)",
+        })
+        .sort_values("Scenario Weight (%)", ascending=False)
+    )
+
+    st.dataframe(detailed, use_container_width=True)
+
     st.caption("""
-    These illustrative ranges are not forecasts, but provide a sense of potential
-    dispersion in long-term outcomes.
+    Scenario allocations are illustrative and based on simple tilts between Equities, Bonds 
+    and Gold. They are designed to support qualitative discussion rather than precise 
+    implementation guidance.
     """)
 
-    # ---- 2) Historical performance vs benchmark ----
-    st.subheader("Historical Performance")
-
-    n_assets = len(filtered_tickers)
-    eq_weights = np.array([1/n_assets] * n_assets)
-    cum_opt = (1 + returns_df.dot(opt_weights)).cumprod()
-    cum_eq = (1 + returns_df.dot(eq_weights)).cumprod()
-
-    hist_data = pd.DataFrame({
-        "Date": returns_df.index,
-        "Selected Strategy": cum_opt,
-        "Equal Weight Benchmark": cum_eq
-    })
-    hist_melted = hist_data.melt("Date", var_name="Strategy", value_name="Cumulative Return")
-
-    unique_years = sorted(returns_df.index.year.unique())
-    tick_values = [pd.Timestamp(f"{y}-01-01") for y in unique_years]
-
-    perf_chart = alt.Chart(hist_melted).mark_line(strokeWidth=2).encode(
-        x=alt.X("Date", axis=alt.Axis(values=tick_values, format="%Y", title="Year", grid=True)),
-        y=alt.Y("Cumulative Return", title="Growth of 1"),
-        color="Strategy",
-        tooltip=[
-            alt.Tooltip("Date", format="%b %Y"),
-            alt.Tooltip("Strategy"),
-            alt.Tooltip("Cumulative Return", format=".2f")
-        ]
-    ).properties(height=400).interactive()
-
-    st.altair_chart(perf_chart, use_container_width=True)
-
-    # ---- 3) Rolling volatility ----
-    st.subheader("Dynamic Risk (Rolling Volatility)")
-
-    window = st.slider("Rolling Window (Months)", 3, 36, 12, key="rolling_window_tab4")
-
-    rolling_asset_vol = returns_df.rolling(window=window).std() * np.sqrt(12)
-    port_ret_series = returns_df.dot(opt_weights)
-    rolling_port_vol = port_ret_series.rolling(window=window).std() * np.sqrt(12)
-
-    max_vol_asset = asset_vols.argmax()
-    riskiest_name = filtered_tickers[max_vol_asset]
-
-    vol_data = pd.DataFrame({
-        "Date": returns_df.index,
-        "Strategy Risk": rolling_port_vol,
-        f"{riskiest_name} (Riskiest Asset)": rolling_asset_vol.iloc[:, max_vol_asset]
-    })
-    vol_melted = vol_data.melt("Date", var_name="Metric", value_name="Volatility")
-
-    vol_chart = alt.Chart(vol_melted).mark_line(strokeWidth=2).encode(
-        x=alt.X("Date", axis=alt.Axis(values=tick_values, format="%Y", title="Year", grid=True)),
-        y=alt.Y("Volatility", axis=alt.Axis(format="%")),
-        color="Metric",
-        tooltip=[
-            alt.Tooltip("Date", format="%b %Y"),
-            alt.Tooltip("Metric"),
-            alt.Tooltip("Volatility", format=".1%")
-        ]
-    ).properties(height=350).interactive()
-
-    st.altair_chart(vol_chart, use_container_width=True)
 
 
 # ============================================================
@@ -853,26 +961,99 @@ with tab5:
     st.header("Implementation & Rebalancing")
 
     st.write("""
-    This tab summarises how the strategy can be implemented in practice and 
-    maintained over time through disciplined rebalancing.
+    This tab summarises how the optimised allocation could be implemented in 
+    practice and maintained over time through disciplined rebalancing.
     """)
 
-    st.subheader("Rebalancing Policy")
+    # --- 1. Rebalancing policy summary ---
+    st.subheader("1. Rebalancing policy")
+
     st.markdown(f"""
     • **Frequency:** {rebalance_label}  
-    • **Purpose:** Maintain strategic weights and risk balance  
-    • **Rationale:** Controls portfolio drift and preserves diversification  
+    • **Objective:** Maintain the strategic risk profile and diversification  
+    • **Max position size:** {max_weight:.0%} per single instrument  
+    • **Investor profile:** {risk_profile} – {time_horizon_years}-year horizon  
     """)
 
-    st.subheader("Asset Mapping")
-    st.caption("Illustrative mapping between instruments and their asset class.")
+    st.caption("""
+    The portfolio is reviewed regularly on the chosen rebalancing frequency.  
+    Rebalancing trades are triggered when weights drift materially away from the 
+    strategic allocation.
+    """)
+
+    # --- 2. Trading instructions (from a simple current portfolio) ---
+    st.subheader("2. Illustrative trading instructions")
+
+    st.write("""
+    For illustration, we assume the current portfolio is equally weighted across 
+    the selected instruments. The table below shows the trades required to move 
+    from this simple benchmark to the optimised allocation.
+    """)
+
+    n_assets = len(filtered_tickers)
+    if n_assets > 0:
+        current_weights = np.array([1.0 / n_assets] * n_assets)
+    else:
+        current_weights = np.array([])
+
+    current_amounts = current_weights * investment_amount
+    target_amounts = opt_weights * investment_amount
+    delta_weights = opt_weights - current_weights
+    delta_amounts = target_amounts - current_amounts
+
+    trades_df = pd.DataFrame({
+        "Asset": filtered_tickers,
+        "Category": alloc_df["Category"].values,
+        "Current Weight": current_weights,
+        "Target Weight": opt_weights,
+        "Current Amount": current_amounts,
+        "Target Amount": target_amounts,
+        "Delta Weight": delta_weights,
+        "Trade Amount": delta_amounts,
+    })
+
+    trades_df["Direction"] = np.where(trades_df["Trade Amount"] > 0, "Buy", "Sell")
+    trades_df["Abs Trade"] = trades_df["Trade Amount"].abs()
+
+    turnover = trades_df["Abs Trade"].sum()
+
+    display_trades = (
+        trades_df
+        .assign(
+            **{
+                "Current Weight (%)": lambda df: (df["Current Weight"] * 100).round(2),
+                "Target Weight (%)": lambda df: (df["Target Weight"] * 100).round(2),
+                "Trade (Amount)": lambda df: df["Trade Amount"].round(0),
+            }
+        )[["Asset", "Category", "Direction", "Current Weight (%)", "Target Weight (%)", "Trade (Amount)"]]
+        .sort_values("Trade (Amount)", ascending=False)
+    )
+
+    st.dataframe(display_trades, use_container_width=True)
+
+    st.caption(
+        f"Approximate one-off turnover to move from equal-weight to the optimised portfolio: "
+        f"≈ {turnover:,.0f} in notional terms."
+    )
+
+    # --- 3. Implementation universe / mapping ---
+    st.subheader("3. Implementation universe (ETF mapping)")
+
+    st.write("""
+    The allocation is expressed in terms of liquid ETFs and broad asset classes.  
+    In practice, the final instrument list would be tailored to the investor's 
+    custodian, preferred providers and cost constraints.
+    """)
+
+    mapping_df = alloc_df[["Asset", "Category", "Region", "Currency", "Weight"]].copy()
+    mapping_df["Weight (%)"] = (mapping_df["Weight"] * 100).round(2)
+
     st.dataframe(
-        alloc_df[["Asset", "Category"]],
+        mapping_df[["Asset", "Category", "Region", "Currency", "Weight (%)"]],
         use_container_width=True
     )
 
     st.caption("""
-    Implementation should favour liquid, cost-efficient instruments 
-    with low tracking error. Rebalancing discipline is essential 
-    to maintain the intended risk exposure.
+    Implementation should favour transparent, UCITS-compliant instruments with 
+    sufficient daily liquidity and low tracking error relative to their reference indices.
     """)
