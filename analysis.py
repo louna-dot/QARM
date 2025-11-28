@@ -737,22 +737,30 @@ with tab3:
     vs capital asset by asset.
     """)
 
-
-
-
 # ============================================================
-#  TAB 4 — SCENARIO ANALYSIS
+#  TAB 4 — SCENARIO & HISTORICAL ANALYSIS
 # ============================================================
 with tab4:
-    st.header("Scenario Analysis")
+    st.header("Scenario & Historical Analysis")
 
     st.write("""
-    This tab combines simple what-if scenarios with a view on how the strategy 
-    would have behaved historically. Scenarios provide an intuitive stress test, 
-    while the backtest and rolling risk give context on past behaviour.
+    This tab has two complementary parts:
+
+    **A. Forward-looking scenarios** – simple what-if adjustments to the 
+    current optimised allocation, showing how return and risk would change 
+    *if we modified the portfolio today*.
+
+    **B. Historical backtest & realised risk** – how the current strategy 
+    would have behaved in the past, based on realised market data.  
+    These historical metrics are not directly comparable to the scenario 
+    metrics, which are forward-looking.
     """)
 
-    # ---------- 1. Scenario selection & construction ----------
+    # ========================================================
+    #  A. FORWARD-LOOKING SCENARIOS (PROSPECTIVE VIEW)
+    # ========================================================
+
+    st.markdown("### A. Forward-looking scenarios")
 
     # Helper: map detailed categories to broad buckets
     def map_to_bucket(cat: str) -> str:
@@ -771,10 +779,11 @@ with tab4:
 
     alloc_df["Bucket"] = alloc_df["Category"].apply(map_to_bucket)
 
-    st.subheader("1. Scenario selection")
+    # ---------- A1. Scenario selection & construction ----------
+    st.subheader("A1. Scenario selection")
 
     scenario_choice = st.selectbox(
-        "Select scenario:",
+        "Select scenario (what-if on the current optimised portfolio):",
         [
             "Base case (current optimisation)",
             "Risk-off: rotate 10% from Equities into Bonds & Gold",
@@ -821,8 +830,8 @@ with tab4:
     else:
         scenario_weights = base_weights.copy()
 
-    # ---------- 2. Impact on key portfolio metrics ----------
-    st.subheader("2. Impact on key portfolio metrics")
+    # ---------- A2. Impact on key portfolio metrics ----------
+    st.subheader("A2. Impact on key portfolio metrics (forward-looking)")
 
     base_ret = float(exp_ret)
     base_vol = float(final_vol)
@@ -839,7 +848,7 @@ with tab4:
         delta=f"{(scen_ret - base_ret)*100:.1f} pp",
     )
     c2.metric(
-        "Expected Volatility",
+        "Expected Volatility (model-based)",
         f"{scen_vol*100:.1f}%",
         delta=f"{(scen_vol - base_vol)*100:.1f} pp",
     )
@@ -849,10 +858,14 @@ with tab4:
         delta=f"{(scen_es - base_es)*100:.1f} pp",
     )
 
-    st.caption("Changes (delta) are expressed in percentage points relative to the base case.")
+    st.caption("""
+    Scenario metrics are **model-based and forward-looking**: they show how 
+    risk and return would change if we adjusted the portfolio **today**, 
+    holding the risk model constant.
+    """)
 
-    # ---------- 3. Key allocation changes (top movers) ----------
-    st.subheader("3. Key allocation changes")
+    # ---------- A3. Key allocation changes (top movers) ----------
+    st.subheader("A3. Key allocation changes under the selected scenario")
 
     changes_df = pd.DataFrame({
         "Asset": filtered_tickers,
@@ -882,13 +895,24 @@ with tab4:
         use_container_width=True,
     )
 
-    # ---------- 4. Historical performance (base strategy) ----------
-    st.subheader("4. Historical performance")
+    st.markdown("---")
+
+    # ========================================================
+    #  B. HISTORICAL BACKTEST & REALISED RISK (PAST VIEW)
+    # ========================================================
+
+    st.markdown("### B. Historical backtest & realised risk")
+
+    # ---------- B1. Historical performance ----------
+    st.subheader("B1. Historical performance of the current strategy")
 
     st.write("""
-    The chart below shows how the optimised strategy would have performed 
-    historically versus a simple equal-weight benchmark constructed on the 
-    same universe of assets.
+    The chart below shows how the **current optimised strategy** would have 
+    performed historically versus a simple equal-weight benchmark constructed 
+    on the same universe of assets.
+
+    These results are based on realised past returns and are **not** affected 
+    by the scenario selected above.
     """)
 
     n_assets = len(filtered_tickers)
@@ -929,14 +953,20 @@ with tab4:
 
     st.altair_chart(perf_chart, use_container_width=True)
 
-    st.caption("Historical backtest based on the chosen investment universe and rebalancing frequency.")
+    st.caption("""
+    Backtested performance based on the chosen investment universe and rebalancing frequency.  
+    It reflects the **current strategy**, not the alternative scenarios defined above.
+    """)
 
-    # ---------- 5. Dynamic risk (rolling volatility) ----------
-    st.subheader("5. Dynamic risk (rolling volatility)")
+    # ---------- B2. Dynamic risk (rolling volatility) ----------
+    st.subheader("B2. Realised risk over time (rolling volatility)")
 
     st.write("""
-    Rolling annualised volatility helps assess how stable the risk profile has 
-    been over time, and how it compares to the riskiest single asset in the universe.
+    Rolling annualised volatility measures how the realised risk of the strategy 
+    has evolved over time, and how it compares to the riskiest single asset in 
+    the universe.
+
+    Unlike the scenario metrics, this is a **purely historical** measure.
     """)
 
     window = st.slider("Rolling window (months)", 3, 36, 12, key="rolling_window_tab4")
@@ -974,9 +1004,12 @@ with tab4:
 
     st.altair_chart(vol_chart, use_container_width=True)
 
-    st.caption(f"Rolling {window}-month volatility of the strategy versus the single riskiest asset.")
-
-
+    st.caption(f"""
+    Rolling {window}-month volatility of the **current optimised strategy** versus the 
+    single riskiest asset in the universe.  
+    This is based on realised past returns and is conceptually different from the 
+    **forward-looking** scenario risk shown in section A.
+    """)
 
 
 # ============================================================
