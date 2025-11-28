@@ -239,7 +239,33 @@ def calculate_diversification_ratio(weights, cov_matrix, asset_vols):
     weighted_avg_vol = np.dot(weights, asset_vols)
     return float(weighted_avg_vol / port_vol)
                 
-        
+ def map_region(category: str, ticker: str) -> str:
+    """
+    Map a detailed Category / ticker to a broad geographic region.
+    This is intentionally simple and transparent for a client pitch.
+    """
+    cat = (category or "").lower()
+    t = (ticker or "").upper()
+
+    if "us " in cat or "u.s." in cat or "united states" in cat:
+        return "US"
+    if "europe" in cat or "euro" in cat or "eu " in cat:
+        return "Europe"
+    if "japan" in cat:
+        return "Japan"
+    if "emerging" in cat or "em " in cat or "emg" in cat:
+        return "Emerging Markets"
+    if "global" in cat or "total market" in cat or "world" in cat or "aggregate" in cat:
+        return "Global / Multi-Region"
+
+    # Petit fallback sur le ticker si on n'a rien trouvé dans Category
+    if t.endswith("JP"):
+        return "Japan"
+    if t.endswith("EU") or t.endswith("DE") or t.endswith("FR"):
+        return "Europe"
+
+    return "Other"
+       
 
 # ==========================================
 # 2. OPTIMIZATION LOGIC
@@ -590,27 +616,56 @@ with tab2:
 
     st.altair_chart(pie, use_container_width=True)
 
-    # --- 3) Geographic Exposure (by Region) ---
-    st.subheader("Geographic Exposure (by Region)")
+        # --- 3) Geographic exposure (by underlying region) ---
+    st.subheader("Geographic exposure (by region)")
+
     st.caption("""
-    Notional exposure aggregated by broad region, based on the underlying asset class.
+    Exposure is grouped by broad economic region based on the underlying index 
+    of each ETF (e.g. US, Europe, Emerging Markets), not by listing venue or currency.
     """)
 
     geo_df = (
         alloc_df
-        .assign(Amount=lambda df: df["Weight"] * investment_amount)
-        .groupby("Region", as_index=False)
-        .agg({"Amount": "sum"})
         .assign(
-            Amount=lambda df: df["Amount"].round(0),
-            Share_pct=lambda df: (df["Amount"] / df["Amount"].sum() * 100).round(2)
+            Region=lambda df: df.apply(
+                lambda row: map_region(row["Category"], row["Asset"]), axis=1
+            ),
+            Amount=lambda df: df["Weight"] * investment_amount,
         )
-        [["Region", "Amount", "Share_pct"]]
-        .rename(columns={"Share_pct": "Share of Portfolio (%)"})
-        .sort_values("Amount", ascending=False)
+        .groupby("Region", as_index=False)
+        .agg({"Weight": "sum", "Amount": "sum"})
+        .assign(
+            Weight_pct=lambda df: (df["Weight"] * 100).round(2),
+            Amount=lambda df: df["Amount"].round(0),
+        )
+        [["Region", "Weight_pct", "Amount"]]
+        .rename(columns={
+            "Weight_pct": "Weight (%)",
+            "Amount": "Amount",
+        })
+        .sort_values("Weight (%)", ascending=False)
     )
 
     st.dataframe(geo_df, use_container_width=True)
+
+    # (optionnel) un petit bar chart horizontal pour la lisibilité
+    geo_chart = (
+        alt.Chart(geo_df)
+        .mark_bar()
+        .encode(
+            x=alt.X("Weight (%)", title="Weight (%)"),
+            y=alt.Y("Region", sort="-x"),
+            tooltip=["Region", alt.Tooltip("Weight (%)", format=".1f"), "Amount"],
+        )
+        .properties(height=260)
+    )
+    st.altair_chart(geo_chart, use_container_width=True)
+
+    st.caption("""
+    This view summarises the strategic regional footprint of the portfolio. 
+    Detailed holdings by instrument are shown in the *Strategic Allocation* table above.
+    """)
+
 
 
     # --- 4) Efficient Frontier view ---
@@ -747,13 +802,12 @@ with tab4:
     This tab has two complementary parts:
 
     **A. Forward-looking scenarios** – simple what-if adjustments to the 
-    current optimised allocation, showing how return and risk would change 
+    current optimised allocation, showing how risk and return would change 
     *if we modified the portfolio today*.
 
     **B. Historical backtest & realised risk** – how the current strategy 
     would have behaved in the past, based on realised market data.  
-    These historical metrics are not directly comparable to the scenario 
-    metrics, which are forward-looking.
+    Historical metrics are not directly comparable to scenario metrics.
     """)
 
     # ========================================================
@@ -864,8 +918,8 @@ with tab4:
     holding the risk model constant.
     """)
 
-    # ---------- A3. Key allocation changes (top movers) ----------
-    st.subheader("A3. Key allocation changes under the selected scenario")
+    # ---------- A3. Key allocation changes: only Δ in pp ----------
+    st.subheader("A3. Key allocation changes (Δ in percentage points)")
 
     changes_df = pd.DataFrame({
         "Asset": filtered_tickers,
@@ -873,27 +927,35 @@ with tab4:
         "Base Weight": base_weights,
         "Scenario Weight": scenario_weights,
     })
+    # Δ en points de %
     changes_df["Change (pp)"] = (changes_df["Scenario Weight"] - changes_df["Base Weight"]) * 100
     changes_df["Abs Change"] = changes_df["Change (pp)"].abs()
+    changes_df["Direction"] = np.where(changes_df["Change (pp)"] > 0, "Increase", "Decrease")
+    # Notional indicatif associé à la variation
+    changes_df["Approx. Trade Amount"] = (changes_df["Change (pp)"] / 100.0 * investment_amount)
 
     top_changes = changes_df.sort_values("Abs Change", ascending=False).head(6)
 
-    st.caption("Largest shifts in allocation, in percentage points of portfolio weight.")
-    st.dataframe(
-        top_changes[["Asset", "Bucket", "Base Weight", "Scenario Weight", "Change (pp)"]]
+    st.caption("""
+    Largest changes in allocation, expressed in **percentage points of portfolio weight**.  
+    Detailed weights by asset are shown in the *Portfolio Construction* tab.
+    """)
+
+    display_changes = (
+        top_changes[["Asset", "Bucket", "Direction", "Change (pp)", "Approx. Trade Amount"]]
         .assign(
             **{
-                "Base Weight": lambda df: (df["Base Weight"] * 100).round(2),
-                "Scenario Weight": lambda df: (df["Scenario Weight"] * 100).round(2),
-                "Change (pp)": lambda df: df["Change (pp)"].round(2),
+                "Change (pp)":       lambda df: df["Change (pp)"].round(2),
+                "Approx. Trade Amount": lambda df: df["Approx. Trade Amount"].round(0),
             }
         )
         .rename(columns={
-            "Base Weight": "Base Weight (%)",
-            "Scenario Weight": "Scenario Weight (%)",
-        }),
-        use_container_width=True,
+            "Change (pp)": "Δ Weight (pp)",
+            "Approx. Trade Amount": "Indicative Trade (Amount)",
+        })
     )
+
+    st.dataframe(display_changes, use_container_width=True)
 
     st.markdown("---")
 
@@ -1012,6 +1074,7 @@ with tab4:
     """)
 
 
+
 # ============================================================
 #  TAB 5 — IMPLEMENTATION & REBALANCING
 # ============================================================
@@ -1019,8 +1082,9 @@ with tab5:
     st.header("Implementation & Rebalancing")
 
     st.write("""
-    This tab summarises how the optimised allocation could be implemented in 
-    practice and maintained over time through disciplined rebalancing.
+    This tab summarises how the optimised portfolio can be implemented in practice 
+    and which trades would be required to move from the **base strategy** to the 
+    **scenario allocation** defined in the previous tab.
     """)
 
     # --- 1. Rebalancing policy summary ---
@@ -1034,70 +1098,73 @@ with tab5:
     """)
 
     st.caption("""
-    The portfolio is reviewed regularly on the chosen rebalancing frequency.  
-    Rebalancing trades are triggered when weights drift materially away from the 
-    strategic allocation.
+    The portfolio is reviewed regularly according to the chosen rebalancing 
+    frequency. Rebalancing aims to keep risk and allocation close to the 
+    strategic targets, while limiting transaction costs.
     """)
 
-    # --- 2. Trading instructions (from base strategy to scenario) ---
-    st.subheader("2. Illustrative trading instructions")
+    # --- 2. Trading instructions: Base -> Scenario ---
+    st.subheader("2. Trading instructions (base strategy → scenario)")
 
-    st.write("""
-    This section shows the trades required to move from the current optimised 
-    portfolio (base case) to the allocation implied by the selected scenario 
-    in the previous tab.
-    """)
-
-    n_assets = len(filtered_tickers)
-
-    if n_assets > 0:
-        # Current = optimised base portfolio
+    if len(filtered_tickers) == 0:
+        st.info("No assets selected – trading instructions are not available.")
+    else:
+        # Current = optimised base strategy (Tab 2)
         current_weights = opt_weights.copy()
 
-        # Target = scenario allocation (defined in Tab 4); if not available, fall back to current
+        # Target = scenario allocation (Tab 4).
+        # If for some reason scenario_weights is not defined, fall back to base.
         try:
             target_weights = scenario_weights.copy()
         except NameError:
             target_weights = opt_weights.copy()
-    else:
-        current_weights = np.array([])
-        target_weights = np.array([])
 
-    current_amounts = current_weights * investment_amount
-    target_amounts = target_weights * investment_amount
-    delta_weights = target_weights - current_weights
-    delta_amounts = target_amounts - current_amounts
+        # Amounts in investor's base currency
+        current_amounts = current_weights * investment_amount
+        target_amounts = target_weights * investment_amount
+        delta_weights = target_weights - current_weights
+        delta_amounts = target_amounts - current_amounts
 
-    trades_df = pd.DataFrame({
-        "Asset": filtered_tickers,
-        "Category": alloc_df["Category"].values,
-        "Current Weight": current_weights,
-        "Target Weight": target_weights,
-        "Current Amount": current_amounts,
-        "Target Amount": target_amounts,
-        "Delta Weight": delta_weights,
-        "Trade Amount": delta_amounts,
-    })
+        trades_df = pd.DataFrame({
+            "Asset": filtered_tickers,
+            "Category": alloc_df["Category"].values,
+            "Current Weight": current_weights,
+            "Target Weight": target_weights,
+            "Current Amount": current_amounts,
+            "Target Amount": target_amounts,
+            "Delta Weight": delta_weights,
+            "Trade Amount": delta_amounts,
+        })
 
+        trades_df["Direction"] = np.where(trades_df["Trade Amount"] > 0, "Buy", "Sell")
+        trades_df["Abs Trade"] = trades_df["Trade Amount"].abs()
 
-    # --- 3. Implementation universe / mapping ---
-    st.subheader("3. Implementation universe (ETF mapping)")
+        # Turnover as a simple liquidity indicator
+        turnover = trades_df["Abs Trade"].sum()
 
-    st.write("""
-    The allocation is expressed in terms of liquid ETFs and broad asset classes.  
-    In practice, the final instrument list would be tailored to the investor's 
-    custodian, preferred providers and cost constraints.
-    """)
+        # Format for display
+        display_trades = (
+            trades_df
+            .assign(
+                **{
+                    "Current Weight (%)": lambda df: (df["Current Weight"] * 100).round(2),
+                    "Target Weight (%)": lambda df: (df["Target Weight"] * 100).round(2),
+                    "Δ Weight (pp)":     lambda df: (df["Delta Weight"] * 100).round(2),
+                    "Trade (Amount)":    lambda df: df["Trade Amount"].round(0),
+                }
+            )[["Asset", "Category", "Direction",
+               "Current Weight (%)", "Target Weight (%)", "Δ Weight (pp)", "Trade (Amount)"]]
+            .sort_values("Trade (Amount)", ascending=False)
+        )
 
-    mapping_df = alloc_df[["Asset", "Category", "Region", "Currency", "Weight"]].copy()
-    mapping_df["Weight (%)"] = (mapping_df["Weight"] * 100).round(2)
+        st.dataframe(display_trades, use_container_width=True)
 
-    st.dataframe(
-        mapping_df[["Asset", "Category", "Region", "Currency", "Weight (%)"]],
-        use_container_width=True
-    )
+        st.caption(
+            f"Approximate one-off turnover to move from the base strategy to the "
+            f"scenario allocation: **{turnover:,.0f}** in notional terms."
+        )
 
     st.caption("""
-    Implementation should favour transparent, UCITS-compliant instruments with 
-    sufficient daily liquidity and low tracking error relative to their reference indices.
+    The trading instructions are indicative only. In practice, execution would 
+    take into account liquidity, costs, and operational constraints.
     """)
