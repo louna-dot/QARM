@@ -1039,60 +1039,46 @@ with tab5:
     strategic allocation.
     """)
 
-    # --- 2. Trading instructions (from a simple current portfolio) ---
+    # --- 2. Trading instructions (from base strategy to scenario) ---
     st.subheader("2. Illustrative trading instructions")
 
     st.write("""
-    For illustration, we assume the current portfolio is equally weighted across 
-    the selected instruments. The table below shows the trades required to move 
-    from this simple benchmark to the optimised allocation.
+    This section shows the trades required to move from the current optimised 
+    portfolio (base case) to the allocation implied by the selected scenario 
+    in the previous tab.
     """)
 
     n_assets = len(filtered_tickers)
+
     if n_assets > 0:
-        current_weights = np.array([1.0 / n_assets] * n_assets)
+        # Current = optimised base portfolio
+        current_weights = opt_weights.copy()
+
+        # Target = scenario allocation (defined in Tab 4); if not available, fall back to current
+        try:
+            target_weights = scenario_weights.copy()
+        except NameError:
+            target_weights = opt_weights.copy()
     else:
         current_weights = np.array([])
+        target_weights = np.array([])
 
     current_amounts = current_weights * investment_amount
-    target_amounts = opt_weights * investment_amount
-    delta_weights = opt_weights - current_weights
+    target_amounts = target_weights * investment_amount
+    delta_weights = target_weights - current_weights
     delta_amounts = target_amounts - current_amounts
 
-    trades_df = pd.DataFrame({
+        trades_df = pd.DataFrame({
         "Asset": filtered_tickers,
         "Category": alloc_df["Category"].values,
         "Current Weight": current_weights,
-        "Target Weight": opt_weights,
+        "Target Weight": target_weights,
         "Current Amount": current_amounts,
         "Target Amount": target_amounts,
         "Delta Weight": delta_weights,
         "Trade Amount": delta_amounts,
     })
 
-    trades_df["Direction"] = np.where(trades_df["Trade Amount"] > 0, "Buy", "Sell")
-    trades_df["Abs Trade"] = trades_df["Trade Amount"].abs()
-
-    turnover = trades_df["Abs Trade"].sum()
-
-    display_trades = (
-        trades_df
-        .assign(
-            **{
-                "Current Weight (%)": lambda df: (df["Current Weight"] * 100).round(2),
-                "Target Weight (%)": lambda df: (df["Target Weight"] * 100).round(2),
-                "Trade (Amount)": lambda df: df["Trade Amount"].round(0),
-            }
-        )[["Asset", "Category", "Direction", "Current Weight (%)", "Target Weight (%)", "Trade (Amount)"]]
-        .sort_values("Trade (Amount)", ascending=False)
-    )
-
-    st.dataframe(display_trades, use_container_width=True)
-
-    st.caption(
-        f"Approximate one-off turnover to move from equal-weight to the optimised portfolio: "
-        f"≈ {turnover:,.0f} in notional terms."
-    )
 
     # --- 3. Implementation universe / mapping ---
     st.subheader("3. Implementation universe (ETF mapping)")
