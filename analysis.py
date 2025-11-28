@@ -671,7 +671,7 @@ with tab3:
     or asset classes.
     """)
 
-    # ---- 2) Capital vs Risk: horizontal bar charts ----
+    # ---- 2) Capital vs Risk: side-by-side bars ----
     st.subheader("Capital vs Risk")
 
     alloc_df_full = pd.DataFrame({
@@ -681,6 +681,7 @@ with tab3:
     })
     alloc_df_full = alloc_df_full[alloc_df_full["Weight"] > 0.001]
 
+    # Melt for Altair
     melted_df = alloc_df_full.melt(
         id_vars="Asset",
         value_vars=["Weight", "Risk Contribution"],
@@ -688,35 +689,37 @@ with tab3:
         value_name="Value"
     )
 
-    horiz_chart = (
+    side_by_side = (
         alt.Chart(melted_df)
         .mark_bar()
         .encode(
-            x=alt.X(
-                "Value:Q",
-                axis=alt.Axis(format="%", title="Percentage of Portfolio")
+            y=alt.Y("Asset:N", sort="-x", title=None),
+            x=alt.X("Value:Q", axis=alt.Axis(format="%", title="Percentage of Portfolio")),
+            color=alt.Color(
+                "Metric:N",
+                scale=alt.Scale(
+                    domain=["Weight", "Risk Contribution"],
+                    range=["#87CEFA", "#1F77B4"]  # bleu clair / bleu foncé
+                ),
+                legend=alt.Legend(title="Metric")
             ),
-            y=alt.Y(
-                "Asset:N",
-                sort="-x",
-                axis=alt.Axis(title=None)
-            ),
-            color=alt.Color("Metric:N", legend=None),
-            tooltip=["Asset", "Metric", alt.Tooltip("Value", format=".1%")],
-            row=alt.Row("Metric:N", title=None)  # une ligne par métrique (Weight / RC)
+            tooltip=[
+                alt.Tooltip("Asset"),
+                alt.Tooltip("Metric"),
+                alt.Tooltip("Value", format=".1%")
+            ]
         )
-        .properties(height=120)
+        .properties(height=300)
     )
 
-    st.altair_chart(horiz_chart, use_container_width=True)
+    st.altair_chart(side_by_side, use_container_width=True)
 
     st.caption("""
-    Each panel shows the percentage of the portfolio by asset: 
-    the top chart for capital allocation (Weight), the bottom one for 
-    risk allocation (Risk Contribution).
+    Each asset displays two bars: 
+    • Weight (capital allocation)  
+    • Risk Contribution (risk allocation).  
+    This highlights where risk concentration exceeds capital allocation.
     """)
-
-
 
 
 # ============================================================
