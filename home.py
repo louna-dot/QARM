@@ -36,23 +36,23 @@ st.markdown(
     To fulfill this mandate, we have deployed a proprietary optimization engine utilizing **Advanced Risk Budgeting Frameworks**. Each methodology reflects a different philosophy of diversifying,
 allocating risk, or incorporating forward-looking assumptions.
 
-    *   **Equal Risk Contribution (ERC):** 
+    * **Equal Risk Contribution (ERC):** 
         *   *Strategy:* Allocates capital such that every asset contributes an equal amount of risk to the total portfolio.
         *   *Benefit:* Significantly improves resilience during equity market drawdowns by forcing diversification into uncorrelated assets.
     
-    *   **Most Diversified Portfolio (MDP):** 
+    * **Most Diversified Portfolio (MDP):** 
         *   *Strategy:* Maximizes the "Diversification Ratio" by aggressively weighting assets with low or negative correlations.
         *   *Benefit:* Extracts the maximum theoretical "free lunch" of diversification, reducing volatility without necessarily sacrificing returns.
     
-    *   **Minimum Expected Shortfall (ES):** 
+    * **Minimum Expected Shortfall (ES):** 
         *   *Strategy:* Minimises Expected Shortfall (ES), the average loss in extreme downside scenarios.  
         *   *Benefit:* Focuses on tail-risk protection and mitigates losses during crisis periods.
     
-    *   **Target Volatility (MVO):** 
+    * **Target Volatility (MVO):** 
         *   *Strategy:* Adjusts portfolio weights so that annualised volatility matches a pre-defined volatility target.
         *   *Benefit:* Maintains consistent risk exposure over time and aligns with mandates that impose volatility limits.
 
-    *   **Equal Weight (Benchmark):** 
+    * **Equal Weight (Benchmark):** 
         *   *Strategy:* Allocates the same weight to each asset.
         *   *Benefit:* Simple, transparent, robust to estimation errors, and provides a clean benchmark for comparison.
     """)
@@ -98,6 +98,7 @@ st.markdown(
     unsafe_allow_html=True
 
 )
+
 
 
 
