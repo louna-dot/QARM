@@ -507,7 +507,11 @@ top_c1.metric("Expected Return (p.a.)", f"{exp_ret*100:.1f}%")
 top_c2.metric("Volatility (p.a.)", f"{final_vol*100:.1f}%")
 top_c3.metric("Expected Shortfall (α)", f"{final_es_metric*100:.1f}%")
 top_c4.metric("Diversification Ratio", f"{div_ratio:.2f}")
-
+st.caption("""
+    These headline metrics provide a governance-level view of the portfolio’s 
+    risk/return profile. Detailed allocation and risk decomposition are available
+    in the subsequent tabs.
+    """)
 
 st.divider()
 
@@ -546,19 +550,6 @@ with tab1:
     • **Investment horizon:** {time_horizon_years} years  
     • **Rebalancing frequency:** {rebalance_label}  
     • **Allocation model:** *{strategy_choice}*  
-    """)
-
-    st.subheader("Key portfolio metrics")
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Expected Return (p.a.)", f"{exp_ret*100:.1f}%")
-    k2.metric("Volatility (p.a.)", f"{final_vol*100:.1f}%")
-    k3.metric("Expected Shortfall", f"{final_es_metric*100:.1f}%")
-    k4.metric("Diversification Ratio", f"{div_ratio:.2f}")
-
-    st.caption("""
-    These headline metrics provide a governance-level view of the portfolio’s 
-    risk/return profile. Detailed allocation and risk decomposition are available
-    in the subsequent tabs.
     """)
 
 # ============================================================
