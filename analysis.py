@@ -704,7 +704,7 @@ with tab3:
             y=alt.Y(
                 "Metric:N",
                 sort=["Risk Contribution", "Weight"],
-                axis=alt.Axis(title=None)
+                axis=None
             ),
             color=alt.Color(
                 "Metric:N",
