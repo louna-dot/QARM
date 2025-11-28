@@ -671,8 +671,7 @@ with tab3:
     or asset classes.
     """)
 
-       
-     # ---- 2) Capital vs Risk: two horizontal panels ----
+    # ---- 2) Capital vs Risk: 2 bars per asset (small multiples) ----
     st.subheader("Capital vs Risk")
 
     alloc_df_full = pd.DataFrame({
@@ -682,7 +681,7 @@ with tab3:
     })
     alloc_df_full = alloc_df_full[alloc_df_full["Weight"] > 0.001]
 
-    # On choisit un ordre unique des actifs (par ex. décroissant en Weight)
+    # ordre des actifs (par exemple décroissant en Weight)
     alloc_df_full = alloc_df_full.sort_values("Weight", ascending=False)
     asset_order = list(alloc_df_full["Asset"])
 
@@ -699,40 +698,43 @@ with tab3:
         .encode(
             x=alt.X(
                 "Value:Q",
-                axis=alt.Axis(format="%", title="Percentage of Portfolio")
+                axis=alt.Axis(format="%", title="Percentage of Portfolio"),
+                scale=alt.Scale(domain=[0, float(melted_df["Value"].max()) * 1.1])
             ),
             y=alt.Y(
-                "Asset:N",
-                sort=asset_order,      # 👈 même ordre dans les deux panneaux
+                "Metric:N",
+                sort=["Risk Contribution", "Weight"],
                 axis=alt.Axis(title=None)
+            ),
+            color=alt.Color(
+                "Metric:N",
+                scale=alt.Scale(
+                    domain=["Weight", "Risk Contribution"],
+                    range=["#87CEFA", "#1F77B4"]
+                ),
+                legend=alt.Legend(title="Metric")
             ),
             tooltip=[
                 alt.Tooltip("Asset"),
                 alt.Tooltip("Metric"),
                 alt.Tooltip("Value", format=".1%")
-            ],
-            color=alt.Color(
-                "Metric:N",
-                scale=alt.Scale(
-                    domain=["Weight", "Risk Contribution"],
-                    range=["#87CEFA", "#1F77B4"]  # bleu clair / bleu foncé
-                ),
-                legend=None
-            )
+            ]
         )
-        .properties(height=100)
+        .properties(height=40)
     )
 
-    two_rows = base_chart.facet(
-        row=alt.Row("Metric:N", sort=["Risk Contribution", "Weight"], title=None)
+    # une ligne (facette) par asset : deux barres l’une au-dessus de l’autre
+    per_asset = base_chart.facet(
+        row=alt.Row("Asset:N", sort=asset_order, title=None),
+        spacing=8
     ).resolve_scale(x="shared")
 
-    st.altair_chart(two_rows, use_container_width=True)
+    st.altair_chart(per_asset, use_container_width=True)
 
     st.caption("""
-    Top panel: Risk Contribution (% of total portfolio risk) by asset.  
-    Bottom panel: Weight (% of capital) by asset.  
-    The same asset order is used in both panels to make comparisons easier.
+    For each asset, the top bar shows its Risk Contribution and the bottom bar 
+    shows its Weight (capital allocation). This makes it easy to compare risk 
+    vs capital asset by asset.
     """)
 
 
