@@ -497,10 +497,8 @@ with st.spinner("Fetching data and optimizing..."):
     exp_ret = np.dot(opt_weights, mu)
 
 # ============================================================
-# 5. TOP BAR – PORTFOLIO OVERVIEW (Bloomberg-style)
+# 5. TOP BAR – PORTFOLIO OVERVIEW
 # ============================================================
-
-st.title(f"Portfolio Dashboard – {strategy_choice}")
 
 st.markdown("### Portfolio overview")
 
