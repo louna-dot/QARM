@@ -616,7 +616,7 @@ with tab2:
 
     st.altair_chart(pie, use_container_width=True)
 
-        # --- 3) Geographic exposure (by underlying region) ---
+    # --- 3) Geographic exposure (by underlying region) ---
     st.subheader("Geographic exposure (by region)")
 
     st.caption("""
@@ -648,7 +648,7 @@ with tab2:
 
     st.dataframe(geo_df, use_container_width=True)
 
-    # (optionnel) un petit bar chart horizontal pour la lisibilité
+    # (optionnel) un bar chart horizontal 
     geo_chart = (
         alt.Chart(geo_df)
         .mark_bar()
