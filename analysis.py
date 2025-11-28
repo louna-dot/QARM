@@ -507,8 +507,9 @@ st.markdown("### Portfolio overview")
 top_c1, top_c2, top_c3, top_c4 = st.columns(4)
 top_c1.metric("Expected Return (p.a.)", f"{exp_ret*100:.1f}%")
 top_c2.metric("Volatility (p.a.)", f"{final_vol*100:.1f}%")
-top_c3.metric("Diversification Ratio", f"{div_ratio:.2f}")
-top_c4.metric("Expected Shortfall (α)", f"{final_es_metric*100:.1f}%")
+top_c3.metric("Expected Shortfall (α)", f"{final_es_metric*100:.1f}%")
+top_c4.metric("Diversification Ratio", f"{div_ratio:.2f}")
+
 
 st.divider()
 
@@ -562,22 +563,20 @@ with tab1:
     in the subsequent tabs.
     """)
 
-# ============================================================
+ ============================================================
 #  TAB 2 — PORTFOLIO CONSTRUCTION
 # ============================================================
 with tab2:
     st.header("Portfolio Construction")
 
     st.write("""
-    This tab focuses on **how the portfolio is built**, with emphasis on allocation 
-    across asset classes, instruments, regions and the position of the optimised 
-    strategy in risk/return space.
+    This tab focuses on how the portfolio is constructed across asset classes 
+    and instruments, based on the selected allocation model.
     """)
 
-    # ----------------------------------------
-    # A. STRATEGIC ALLOCATION BY ASSET CLASS
-    # ----------------------------------------
-    st.subheader("A. Strategic allocation by asset class")
+    # --- 1) Strategic Allocation (by Asset Class) ---
+    st.subheader("Strategic Allocation (by Asset Class)")
+    st.caption("Strategic weights aggregated at the asset-class level.")
 
     alloc_by_class = (
         alloc_df
@@ -585,66 +584,36 @@ with tab2:
         .agg({"Weight": "sum"})
         .assign(Weight_pct=lambda df: (df["Weight"] * 100).round(2))
         .rename(columns={"Weight_pct": "Weight (%)"})
-        .sort_values("Weight (%)", ascending=False)
+        .sort_values("Weight", ascending=False)
     )
-
     st.dataframe(
         alloc_by_class[["Category", "Weight (%)"]],
-        use_container_width=True,
+        use_container_width=True
     )
 
-    class_bar = (
-        alt.Chart(alloc_by_class)
-        .mark_bar()
-        .encode(
-            x=alt.X("Weight (%):Q", title="Weight (%)"),
-            y=alt.Y("Category:N", sort="-x"),
-            tooltip=[
-                alt.Tooltip("Category:N"),
-                alt.Tooltip("Weight (%):Q", format=".1f")
-            ],
-        )
-        .properties(height=320)
-    )
-    st.altair_chart(class_bar, use_container_width=True)
+    # --- 2) Pie chart by asset class ---
+    st.subheader("Allocation by Asset Class (Pie Chart)")
 
-    st.caption("Strategic weights aggregated at the asset-class level.")
+    alloc_df_filtered = alloc_df[alloc_df["Weight"] > 0.001]
 
-    st.divider()
+    pie = alt.Chart(alloc_df_filtered).mark_arc(innerRadius=60).encode(
+        theta=alt.Theta(field="Weight", type="quantitative"),
+        color=alt.Color(field="Category", type="nominal"),
+        tooltip=["Category", "Asset", alt.Tooltip("Weight", format=".1%")]
+    ).properties(title="Portfolio Exposure").interactive()
 
-    # ----------------------------------------
-    # B. TOP HOLDINGS (INSTRUMENT LEVEL)
-    # ----------------------------------------
-    st.subheader("B. Top holdings (instrument level)")
+    st.altair_chart(pie, use_container_width=True)
 
-    top_holdings = (
-        alloc_df
-        .assign(
-            Weight_pct=lambda df: (df["Weight"] * 100).round(2),
-            Amount=lambda df: (df["Weight"] * investment_amount).round(0),
-        )
-        .sort_values("Weight", ascending=False)
-        .head(10)
-        [["Asset", "Category", "Currency", "Region", "Weight_pct", "Amount"]]
-        .rename(columns={"Weight_pct": "Weight (%)"})
-    )
-
-    st.dataframe(top_holdings, use_container_width=True)
-
-    st.caption("Top 10 positions by capital allocation, including currency and region tags.")
-
-    st.divider()
-
-    # ----------------------------------------
-    # C. GEOGRAPHIC EXPOSURE BY ASSET CLASS
-    # ----------------------------------------
-    st.subheader("C. Geographic exposure by asset class")
+    
+    # --- 3) Geographic & asset-class mix ---
+    st.subheader("Geographic exposure by asset class")
 
     st.caption("""
-    This view shows how the portfolio's exposure is distributed **by region** and 
-    across broad asset classes (Equities, Bonds, Real Assets, Commodities, etc.).
+    This view shows how the portfolio's risk budget is distributed **by region** 
+    and **by major asset class** (Equities, Bonds, Real Assets, etc.).
     """)
 
+    # Helper: map detailed Category to a broad asset class label
     def classify_asset_class(cat: str) -> str:
         c = (cat or "").lower()
         if "equities" in c or "equity" in c or "stock" in c:
@@ -659,62 +628,70 @@ with tab2:
             return "Crypto"
         return "Other"
 
+    # Add a broad asset-class label
     geo_ac_df = alloc_df.assign(
         AssetClass=lambda df: df["Category"].apply(classify_asset_class)
     )
 
+    # Aggregate weights by Region × AssetClass
     region_ac = (
         geo_ac_df
         .groupby(["Region", "AssetClass"], as_index=False)
         .agg({"Weight": "sum"})
     )
-    region_ac["Weight_pct"] = (region_ac["Weight"] * 100).round(1)
+    region_ac["Weight_pct"] = region_ac["Weight"] * 100
 
-    if not region_ac.empty:
-        matrix = (
-            region_ac
-            .pivot(index="Region", columns="AssetClass", values="Weight_pct")
-            .fillna(0)
+    # --- 3a) Matrix table (Region x Asset Class) ---
+    matrix = (
+        region_ac
+        .pivot(index="Region", columns="AssetClass", values="Weight_pct")
+        .fillna(0)
+        .round(1)
+    )
+    matrix["Total (%)"] = matrix.sum(axis=1).round(1)
+    matrix = matrix.reset_index()
+
+    st.dataframe(matrix, use_container_width=True)
+
+    st.caption("""
+    Rows sum to the **total regional weight** in the portfolio. Columns show how 
+    much of that regional exposure comes from Equities, Bonds, Real Assets, etc.
+    """)
+
+    # --- 3b) Stacked bar chart by Region & Asset Class ---
+    stacked_chart = (
+        alt.Chart(region_ac)
+        .mark_bar()
+        .encode(
+            x=alt.X(
+                "sum(Weight):Q",
+                stack="normalize",
+                axis=alt.Axis(format="%", title="Share of portfolio")
+            ),
+            y=alt.Y("Region:N", sort="-x"),
+            color=alt.Color(
+                "AssetClass:N",
+                legend=alt.Legend(title="Asset class")
+            ),
+            tooltip=[
+                alt.Tooltip("Region:N"),
+                alt.Tooltip("AssetClass:N", title="Asset class"),
+                alt.Tooltip("Weight_pct:Q", format=".1f", title="Weight (%)"),
+            ],
         )
-        matrix["Total (%)"] = matrix.sum(axis=1).round(1)
-        matrix = matrix.reset_index()
+        .properties(height=260)
+    )
 
-        st.dataframe(matrix, use_container_width=True)
+    st.altair_chart(stacked_chart, use_container_width=True)
 
-        stacked_chart = (
-            alt.Chart(region_ac)
-            .mark_bar()
-            .encode(
-                x=alt.X(
-                    "sum(Weight):Q",
-                    stack="normalize",
-                    axis=alt.Axis(format="%", title="Share of portfolio"),
-                ),
-                y=alt.Y("Region:N", sort="-x"),
-                color=alt.Color("AssetClass:N", legend=alt.Legend(title="Asset class")),
-                tooltip=[
-                    alt.Tooltip("Region:N"),
-                    alt.Tooltip("AssetClass:N", title="Asset class"),
-                    alt.Tooltip("Weight_pct:Q", format=".1f", title="Weight (%)"),
-                ],
-            )
-            .properties(height=260)
-        )
-        st.altair_chart(stacked_chart, use_container_width=True)
+    st.caption("""
+    Each bar represents a **region**; colours show how that region is split across 
+    Equities, Bonds and other asset classes. This highlights, for example, 
+    whether Emerging Markets exposure is primarily equity-driven or bond-driven.
+    """)  
 
-        st.caption("""
-        Each bar represents a **region**; colours show how that regional exposure 
-        is split between Equities, Bonds and other asset classes.
-        """)
-    else:
-        st.info("No region information available for the current selection.")
-
-    st.divider()
-
-    # ----------------------------------------
-    # D. EFFICIENT FRONTIER POSITIONING
-    # ----------------------------------------
-    st.subheader("D. Efficient frontier positioning")
+    # --- 4) Efficient Frontier view ---
+    st.subheader("Efficient frontier positioning")
 
     st.caption("""
     The scatter plot below shows simulated portfolios in risk/return space, with 
@@ -766,127 +743,88 @@ with tab3:
     st.header("Risk Decomposition")
 
     st.write("""
-    This section focuses on how **total portfolio risk** is distributed across 
-    individual holdings and asset classes, and whether risk is more concentrated 
-    than capital.
+    This tab highlights how risk is distributed across assets and compares 
+    capital allocation with risk contribution.
     """)
 
-    # ----------------------------------------
-    # A. RISK CONTRIBUTION BY ASSET
-    # ----------------------------------------
-    st.subheader("A. Risk contribution by asset")
+    # ---- 1) Risk contributions by asset (table only) ----
+    rc_df = pd.DataFrame({"Asset": filtered_tickers, "Risk Contribution": final_rc})
 
-    rc_df = pd.DataFrame({
-        "Asset": filtered_tickers,
-        "Category": [asset_info_dict.get(t, "Unclassified") for t in filtered_tickers],
-        "Risk Contribution": final_rc,
-    })
+    st.subheader("Risk Contribution by Asset")
+    st.dataframe(rc_df, use_container_width=True)
 
-    rc_df_display = (
-        rc_df
-        .assign(Risk_contr_pct=lambda df: (df["Risk Contribution"] * 100).round(2))
-        .sort_values("Risk_contr_pct", ascending=False)
-        [["Asset", "Category", "Risk_contr_pct"]]
-        .rename(columns={"Risk_contr_pct": "Risk contribution (%)"})
-    )
+    st.caption("""
+    A well-balanced risk profile avoids concentration in a small number of assets 
+    or asset classes.
+    """)
 
-    st.dataframe(rc_df_display, use_container_width=True)
-    st.caption("Risk contributions are normalised to sum to 100% across all assets.")
-
-    # ----------------------------------------
-    # B. CAPITAL VS RISK (BY ASSET)
-    # ----------------------------------------
-    st.subheader("B. Capital vs risk by asset")
+    # ---- 2) Capital vs Risk: 2 bars per asset (small multiples) ----
+    st.subheader("Capital vs Risk")
 
     alloc_df_full = pd.DataFrame({
         "Asset": filtered_tickers,
         "Weight": opt_weights,
-        "Risk Contribution": final_rc,
+        "Risk Contribution": final_rc
     })
     alloc_df_full = alloc_df_full[alloc_df_full["Weight"] > 0.001]
 
-    melted_df = alloc_df_full.melt("Asset", var_name="Metric", value_name="Value")
+    # ordre des actifs (par exemple décroissant en Weight)
+    alloc_df_full = alloc_df_full.sort_values("Weight", ascending=False)
+    asset_order = list(alloc_df_full["Asset"])
 
-    cap_risk_chart = (
+    melted_df = alloc_df_full.melt(
+        id_vars="Asset",
+        value_vars=["Weight", "Risk Contribution"],
+        var_name="Metric",
+        value_name="Value"
+    )
+
+    base_chart = (
         alt.Chart(melted_df)
         .mark_bar()
         .encode(
-            y=alt.Y("Asset:N", sort="-x"),
-            x=alt.X("Value:Q", axis=alt.Axis(format="%", title="Share of portfolio")),
-            color=alt.Color("Metric:N", legend=alt.Legend(title="Metric")),
+            x=alt.X(
+                "Value:Q",
+                axis=alt.Axis(format="%", title="Percentage of Portfolio"),
+                scale=alt.Scale(domain=[0, float(melted_df["Value"].max()) * 1.1])
+            ),
+            y=alt.Y(
+                "Metric:N",
+                sort=["Risk Contribution", "Weight"],
+                axis=None
+            ),
+            color=alt.Color(
+                "Metric:N",
+                scale=alt.Scale(
+                    domain=["Weight", "Risk Contribution"],
+                    range=["#87CEFA", "#1F77B4"]
+                ),
+                legend=alt.Legend(title="Metric")
+            ),
             tooltip=[
-                alt.Tooltip("Asset:N"),
-                alt.Tooltip("Metric:N"),
-                alt.Tooltip("Value:Q", format=".1%", title="Share"),
-            ],
+                alt.Tooltip("Asset"),
+                alt.Tooltip("Metric"),
+                alt.Tooltip("Value", format=".1%")
+            ]
         )
-        .properties(height=360)
+        .properties(height=40)
     )
 
-    st.altair_chart(cap_risk_chart, use_container_width=True)
+    # une ligne (facette) par asset : deux barres l’une au-dessus de l’autre
+    per_asset = base_chart.facet(
+        row=alt.Row("Asset:N", sort=asset_order, title=None),
+        spacing=8
+    ).resolve_scale(x="shared")
+
+    st.altair_chart(per_asset, use_container_width=True)
 
     st.caption("""
-    Bars show how much **capital** is allocated to each asset (Weight) versus how 
-    much **risk** it contributes (Risk Contribution). Large differences highlight 
-    assets that drive risk disproportionately to their capital allocation.
+    For each asset, the top bar shows its Risk Contribution and the bottom bar 
+    shows its Weight (capital allocation). This makes it easy to compare risk 
+    vs capital asset by asset.
     """)
 
-    # ----------------------------------------
-    # C. RISK BY ASSET CLASS
-    # ----------------------------------------
-    st.subheader("C. Risk distribution by asset class")
 
-    rc_with_cat = rc_df.assign(Category=lambda df: df["Category"].fillna("Unclassified"))
-
-    rc_by_class = (
-        rc_with_cat
-        .groupby("Category", as_index=False)
-        .agg({"Risk Contribution": "sum"})
-        .assign(Risk_contr_pct=lambda df: (df["Risk Contribution"] * 100).round(2))
-        .rename(columns={"Risk_contr_pct": "Risk contribution (%)"})
-        .sort_values("Risk contribution (%)", ascending=False)
-    )
-
-    st.dataframe(
-        rc_by_class[["Category", "Risk contribution (%)"]],
-        use_container_width=True,
-    )
-
-    class_risk_chart = (
-        alt.Chart(rc_by_class)
-        .mark_bar()
-        .encode(
-            x=alt.X("Risk contribution (%):Q", title="Risk contribution (%)"),
-            y=alt.Y("Category:N", sort="-x"),
-            tooltip=[
-                alt.Tooltip("Category:N"),
-                alt.Tooltip("Risk contribution (%):Q", format=".1f"),
-            ],
-        )
-        .properties(height=320)
-    )
-
-    st.altair_chart(class_risk_chart, use_container_width=True)
-
-    # ----------------------------------------
-    # D. RISK CONCENTRATION INDICATORS
-    # ----------------------------------------
-    st.subheader("D. Risk concentration indicators")
-
-    rc_sorted = rc_df_display.sort_values("Risk contribution (%)", ascending=False)
-    top1_rc = float(rc_sorted["Risk contribution (%)"].iloc[0])
-    top1_name = rc_sorted["Asset"].iloc[0]
-    top3_rc = float(rc_sorted["Risk contribution (%)"].head(3).sum())
-
-    c1, c2 = st.columns(2)
-    c1.metric("Largest single-asset risk share", f"{top1_rc:.1f}%", help=top1_name)
-    c2.metric("Top 3 assets – share of risk", f"{top3_rc:.1f}%")
-
-    st.caption("""
-    These indicators summarise whether portfolio risk is dominated by a small number 
-    of positions. For institutional investors, concentration thresholds can be set 
-    at the mandate level (e.g. “no single asset to exceed 20% of risk”).
-    """)
 
 # ============================================================
 #  TAB 4 — SCENARIO ANALYSIS
