@@ -1081,157 +1081,262 @@ with tab4:
     """)
 
 
-
 # ============================================================
-#  TAB 5 — IMPLEMENTATION & REBALANCING
+#  TAB 5 — IMPLEMENTATION & REBALANCING (avec portefeuille courant)
 # ============================================================
 with tab5:
     st.header("Implementation & Rebalancing")
 
     st.write("""
-    This section translates the strategic allocation into **practical rebalancing guidance**.
-    It assumes the investor currently holds an **equal-weight portfolio** in the selected assets,
-    and compares it with the optimised target allocation from this dashboard.
+    This section turns the optimised allocation into **practical rebalancing guidance**.
+    The investor can provide a **current portfolio** (weights by asset) via CSV upload.
+    If no file is provided, an equal-weight portfolio in the selected assets is used as
+    the current implementation.
     """)
 
     # --------------------------------------------------------
-    # 1. Define "current" vs "target" portfolio
+    # 0. Current portfolio input (optional CSV upload)
     # --------------------------------------------------------
+    st.subheader("Current portfolio input")
+
+    st.markdown("""
+    Upload a CSV file with at least the following columns:
+    - **Asset**: ticker (e.g. SPY, TLT, GLD)  
+    - **Weight**: current portfolio weight in decimal (e.g. 0.25 for 25%)  
+
+    Weights do not need to sum to 1. They will be normalised over the selected universe.
+    """)
+
+    uploaded_portfolio = st.file_uploader(
+        "Upload current portfolio (optional)",
+        type=["csv"],
+        help="If no file is uploaded, an equal-weight portfolio is assumed."
+    )
+
     n_assets_impl = len(filtered_tickers)
     if n_assets_impl == 0:
         st.warning("No assets selected for implementation.")
         st.stop()
 
-    # Current implementation = simple equal-weight portfolio
-    current_w = np.array([1 / n_assets_impl] * n_assets_impl)
-    target_w = opt_weights  # from the optimisation step above
-    delta_w = target_w - current_w
+    # --- Build current_w from CSV if available, else fallback to equal-weight ---
+    current_w_source = "equal-weight (fallback)"
 
-    # Drifts in percentage points
-    delta_pp = delta_w * 100
-    max_drift_idx = np.argmax(np.abs(delta_pp))
+    if uploaded_portfolio is not None:
+        try:
+            pf_df = pd.read_csv(uploaded_portfolio)
+
+            # Clean column names
+            pf_df.columns = [c.strip().lower() for c in pf_df.columns]
+
+            if "asset" in pf_df.columns and "weight" in pf_df.columns:
+                # Map asset -> weight
+                w_map = (
+                    pf_df[["asset", "weight"]]
+                    .copy()
+                    .assign(asset=lambda df: df["asset"].astype(str).str.upper())
+                    .groupby("asset", as_index=True)["weight"]
+                    .sum()
+                )
+
+                # Build weight vector aligned with filtered_tickers
+                w_list = []
+                for t in filtered_tickers:
+                    w_list.append(float(w_map.get(t, 0.0)))
+                current_w = np.array(w_list, dtype=float)
+
+                if current_w.sum() > 0:
+                    current_w = current_w / current_w.sum()
+                    current_w_source = "uploaded CSV"
+                else:
+                    st.warning(
+                        "Uploaded portfolio has zero total weight on the selected tickers. "
+                        "Falling back to an equal-weight current portfolio."
+                    )
+                    current_w = np.array([1.0 / n_assets_impl] * n_assets_impl)
+            else:
+                st.warning(
+                    "Uploaded CSV must contain at least 'Asset' and 'Weight' columns. "
+                    "Falling back to an equal-weight current portfolio."
+                )
+                current_w = np.array([1.0 / n_assets_impl] * n_assets_impl)
+
+        except Exception as e:
+            st.warning(
+                f"Could not read current portfolio from CSV ({e}). "
+                "Falling back to an equal-weight current portfolio."
+            )
+            current_w = np.array([1.0 / n_assets_impl] * n_assets_impl)
+    else:
+        # No file → equal-weight
+        current_w = np.array([1.0 / n_assets_impl] * n_assets_impl)
+
+    st.caption(f"Current portfolio source: **{current_w_source}**.")
+
+    # --------------------------------------------------------
+    # 1. Define target portfolio and drift
+    # --------------------------------------------------------
+    target_w = opt_weights  # from the optimisation step above
+
+    # Sanity: normalise target_w just in case numerical drift
+    if not np.isclose(target_w.sum(), 1.0):
+        target_w = target_w / target_w.sum()
+
+    delta_w = target_w - current_w
+    delta_pp = delta_w * 100.0  # change in percentage points
+
+    abs_delta_pp = np.abs(delta_pp)
+    max_drift_idx = int(abs_delta_pp.argmax())
     max_drift_asset = filtered_tickers[max_drift_idx]
     max_drift_pp = float(delta_pp[max_drift_idx])
+    avg_drift_pp = float(abs_delta_pp.mean())
+    drift_threshold_pp = 3.0
+    n_breaches = int((abs_delta_pp > drift_threshold_pp).sum())
 
-    # Simple drift threshold for rebalancing recommendation
-    drift_threshold_pp = 3.0  # 3 percentage points
-
-    # Volatilities: current (equal-weight) vs target
+    # Risk metrics: current vs target
     vol_current_impl = calculate_portfolio_vol(current_w, Sigma)
-    vol_target_impl = final_vol  # already computed for opt_weights
+    vol_target_impl = final_vol
 
-    col_a, col_b, col_c = st.columns(3)
-    col_a.metric(
-        "Max allocation drift (pp)",
+    # --- Summary metrics row ---
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric(
+        "Max drift (pp)",
         f"{max_drift_pp:+.1f}",
-        help="Largest difference between equal-weight and the optimised target weight."
+        help="Largest deviation between current and target weights (percentage points).",
     )
-    col_b.metric(
-        "Current volatility (equal-weight)",
-        f"{vol_current_impl*100:.1f}%",
-    )
-    col_c.metric(
-        "Target volatility (optimised)",
-        f"{vol_target_impl*100:.1f}%",
+    col2.metric("Average drift (pp)", f"{avg_drift_pp:.1f}")
+    col3.metric("# Assets above drift threshold", f"{n_breaches} / {n_assets_impl}")
+    col4.metric(
+        "Volatility: current → target",
+        f"{vol_current_impl*100:.1f}% → {vol_target_impl*100:.1f}%",
     )
 
-    # Rebalancing recommendation box
-    if abs(max_drift_pp) > drift_threshold_pp:
+    if n_breaches > 0:
         st.warning(
-            f"Rebalancing **recommended**: {max_drift_asset} deviates by "
-            f"{max_drift_pp:+.1f} percentage points from its target weight "
-            f"(threshold = {drift_threshold_pp:.1f} pp)."
+            f"Rebalancing **recommended**: {n_breaches} asset(s) exceed the drift "
+            f"threshold of {drift_threshold_pp:.1f}pp. "
+            f"Largest drift: {max_drift_asset} at {max_drift_pp:+.1f}pp."
         )
     else:
         st.success(
             f"Rebalancing **not strictly required** based on the drift threshold "
-            f"({drift_threshold_pp:.1f} pp). Largest drift: {max_drift_asset} "
-            f"at {max_drift_pp:+.1f} pp."
+            f"({drift_threshold_pp:.1f}pp). Largest drift: {max_drift_asset} "
+            f"at {max_drift_pp:+.1f}pp."
         )
 
     st.divider()
 
     # --------------------------------------------------------
-    # 2. Suggested trades (from equal-weight to target)
+    # 2. Trade blotter (Top 5 + full CSV)
     # --------------------------------------------------------
-    st.subheader("Suggested trades (from equal-weight to target allocation)")
+    st.subheader("Suggested trades (from current portfolio to target allocation)")
 
-    trades_df = pd.DataFrame({
+    trade_amounts = delta_w * investment_amount
+
+    trades_full = pd.DataFrame({
         "Asset": filtered_tickers,
+        "Direction": np.where(trade_amounts > 0, "Buy", "Sell"),
+        "Trade amount": trade_amounts.round(0).astype(int),
+        "Δ weight (pp)": delta_pp.round(1),
         "Current weight (%)": (current_w * 100).round(1),
         "Target weight (%)": (target_w * 100).round(1),
-        "Change (pp)": delta_pp.round(1),
     })
 
-    # Direction & trade amount in base currency
-    trades_df["Direction"] = np.where(trades_df["Change (pp)"] > 0, "Buy", "Sell")
-    trades_df["Trade amount"] = (delta_w * investment_amount).round(0)
-    trades_df["Trade amount"] = trades_df["Trade amount"].astype(int)
+    trades_full["abs_drift"] = trades_full["Δ weight (pp)"].abs()
+    trades_filtered = trades_full[trades_full["abs_drift"] > 0.1]
 
-    # On filtre les micro-trades pour la lisibilité (|Δ| < 0.1 pp)
-    trades_df["abs_change"] = trades_df["Change (pp)"].abs()
-    trades_df = trades_df[trades_df["abs_change"] > 0.1]
-
-    # On trie par taille de mouvement décroissante
-    trades_df = trades_df.sort_values("abs_change", ascending=False)
-
-    # On enlève la colonne technique
-    trades_df = trades_df.drop(columns=["abs_change"])
-
-    if trades_df.empty:
+    if trades_filtered.empty:
         st.info("No meaningful trades: all assets are already very close to target weights.")
     else:
+        top5_trades = (
+            trades_filtered
+            .sort_values("abs_drift", ascending=False)
+            .head(5)
+            .drop(columns=["abs_drift"])
+        )
+
+        st.markdown("**Top 5 trades by absolute drift**")
         st.dataframe(
-            trades_df[
+            top5_trades[
                 ["Asset", "Direction", "Trade amount",
-                 "Current weight (%)", "Target weight (%)", "Change (pp)"]
+                 "Current weight (%)", "Target weight (%)", "Δ weight (pp)"]
             ],
             use_container_width=True,
         )
 
         st.caption("""
-        Positive trade amounts correspond to **buys**, negative amounts to **sells**.  
-        Changes are expressed in percentage points of portfolio weight, relative to
-        an equal-weight implementation in the selected assets.
+        Positive trade amounts correspond to **buys**, negative amounts to **sells**.
+        Weight changes are expressed in **percentage points** (pp) relative to the
+        uploaded current portfolio (or the equal-weight fallback).
         """)
+
+        st.markdown("**Full trade blotter**")
+        csv_bytes = trades_filtered.drop(columns=["abs_drift"]).to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="📥 Download full trade blotter (CSV)",
+            data=csv_bytes,
+            file_name="trade_blotter_rebalance.csv",
+            mime="text/csv",
+        )
 
     st.divider()
 
     # --------------------------------------------------------
-    # 3. Rebalancing calendar / policy reminder
+    # 3. Turnover & simple cost estimate
+    # --------------------------------------------------------
+    st.subheader("Turnover & estimated trading cost")
+
+    gross_turnover = float(np.sum(np.abs(trade_amounts))) / float(investment_amount)
+    cost_bps = 20.0
+    est_trading_cost = gross_turnover * (cost_bps / 10000.0) * investment_amount
+
+    c_to1, c_to2, c_to3 = st.columns(3)
+    c_to1.metric("Gross turnover", f"{gross_turnover*100:.1f}%")
+    c_to2.metric("Cost assumption", f"{cost_bps:.0f} bps")
+    c_to3.metric("Estimated trading cost", f"{est_trading_cost:,.0f}")
+
+    st.caption("""
+    Turnover is defined as the sum of absolute trade notionals divided by the total portfolio value.
+    The cost estimate is illustrative and based on a flat spread + impact assumption (20 bps total).
+    """)
+
+    st.divider()
+
+    # --------------------------------------------------------
+    # 4. Rebalancing calendar & policy reminder
     # --------------------------------------------------------
     st.subheader("Rebalancing calendar & policy reminder")
 
-    # Approximate last & next rebalance dates based on the chosen frequency
     today_ts = pd.to_datetime(end_date)
+
     if rebalance_label == "Monthly":
-        last_reb = today_ts.replace(day=1) - pd.offsets.MonthEnd(1)
+        last_reb = today_ts - pd.offsets.MonthEnd(1)
         next_reb = today_ts + pd.offsets.MonthEnd(1)
     elif rebalance_label == "Quarterly":
         last_reb = today_ts - pd.offsets.QuarterEnd(1)
         next_reb = today_ts + pd.offsets.QuarterEnd(1)
-    else:  # Yearly
+    else:
         last_reb = today_ts - pd.offsets.YearEnd(1)
         next_reb = today_ts + pd.offsets.YearEnd(1)
 
-    c1, c2 = st.columns(2)
-    with c1:
+    c_date1, c_date2 = st.columns(2)
+    with c_date1:
         st.markdown("**Last rebalance (approx.)**")
         st.write(last_reb.date())
         st.markdown("**Next expected rebalance window**")
         st.write(next_reb.date())
 
-    with c2:
+    with c_date2:
         st.markdown("**Policy reminder**")
         st.markdown(f"""
         • **Frequency:** {rebalance_label}  
         • **Drift threshold:** {drift_threshold_pp:.1f} percentage points  
         • **Max weight per asset:** {max_weight:.0%}  
-        • **Universe:** {', '.join(filtered_tickers)}
+        • **Universe:** {', '.join(filtered_tickers)}  
         """)
 
     st.caption("""
-    The dates above are indicative and based on the selected backtest frequency. 
-    In practice, the investment committee may also trigger off-cycle rebalancing 
+    Dates above are indicative and based on the selected backtest frequency.
+    In practice, the investment committee may also trigger off-cycle rebalancing
     when market moves cause drifts or risk metrics to breach policy limits.
     """)
+
