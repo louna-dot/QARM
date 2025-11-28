@@ -1089,89 +1089,149 @@ with tab5:
     st.header("Implementation & Rebalancing")
 
     st.write("""
-    This tab summarises how the optimised portfolio can be implemented in practice 
-    and which trades would be required to move from the **base strategy** to the 
-    **scenario allocation** defined in the previous tab.
+    This section translates the strategic allocation into **practical rebalancing guidance**.
+    It assumes the investor currently holds an **equal-weight portfolio** in the selected assets,
+    and compares it with the optimised target allocation from this dashboard.
     """)
 
-    # --- 1. Rebalancing policy summary ---
-    st.subheader("1. Rebalancing policy")
+    # --------------------------------------------------------
+    # 1. Define "current" vs "target" portfolio
+    # --------------------------------------------------------
+    n_assets_impl = len(filtered_tickers)
+    if n_assets_impl == 0:
+        st.warning("No assets selected for implementation.")
+        st.stop()
 
-    st.markdown(f"""
-    • **Frequency:** {rebalance_label}  
-    • **Objective:** Maintain the strategic risk profile and diversification  
-    • **Max position size:** {max_weight:.0%} per single instrument  
-    • **Investor profile:** {risk_profile} – {time_horizon_years}-year horizon  
-    """)
+    # Current implementation = simple equal-weight portfolio
+    current_w = np.array([1 / n_assets_impl] * n_assets_impl)
+    target_w = opt_weights  # from the optimisation step above
+    delta_w = target_w - current_w
 
-    st.caption("""
-    The portfolio is reviewed regularly according to the chosen rebalancing 
-    frequency. Rebalancing aims to keep risk and allocation close to the 
-    strategic targets, while limiting transaction costs.
-    """)
+    # Drifts in percentage points
+    delta_pp = delta_w * 100
+    max_drift_idx = np.argmax(np.abs(delta_pp))
+    max_drift_asset = filtered_tickers[max_drift_idx]
+    max_drift_pp = float(delta_pp[max_drift_idx])
 
-    # --- 2. Trading instructions: Base -> Scenario ---
-    st.subheader("2. Trading instructions (base strategy → scenario)")
+    # Simple drift threshold for rebalancing recommendation
+    drift_threshold_pp = 3.0  # 3 percentage points
 
-    if len(filtered_tickers) == 0:
-        st.info("No assets selected – trading instructions are not available.")
+    # Volatilities: current (equal-weight) vs target
+    vol_current_impl = calculate_portfolio_vol(current_w, Sigma)
+    vol_target_impl = final_vol  # already computed for opt_weights
+
+    col_a, col_b, col_c = st.columns(3)
+    col_a.metric(
+        "Max allocation drift (pp)",
+        f"{max_drift_pp:+.1f}",
+        help="Largest difference between equal-weight and the optimised target weight."
+    )
+    col_b.metric(
+        "Current volatility (equal-weight)",
+        f"{vol_current_impl*100:.1f}%",
+    )
+    col_c.metric(
+        "Target volatility (optimised)",
+        f"{vol_target_impl*100:.1f}%",
+    )
+
+    # Rebalancing recommendation box
+    if abs(max_drift_pp) > drift_threshold_pp:
+        st.warning(
+            f"Rebalancing **recommended**: {max_drift_asset} deviates by "
+            f"{max_drift_pp:+.1f} percentage points from its target weight "
+            f"(threshold = {drift_threshold_pp:.1f} pp)."
+        )
     else:
-        # Current = optimised base strategy (Tab 2)
-        current_weights = opt_weights.copy()
-
-        # Target = scenario allocation (Tab 4).
-        # If for some reason scenario_weights is not defined, fall back to base.
-        try:
-            target_weights = scenario_weights.copy()
-        except NameError:
-            target_weights = opt_weights.copy()
-
-        # Amounts in investor's base currency
-        current_amounts = current_weights * investment_amount
-        target_amounts = target_weights * investment_amount
-        delta_weights = target_weights - current_weights
-        delta_amounts = target_amounts - current_amounts
-
-        trades_df = pd.DataFrame({
-            "Asset": filtered_tickers,
-            "Category": alloc_df["Category"].values,
-            "Current Weight": current_weights,
-            "Target Weight": target_weights,
-            "Current Amount": current_amounts,
-            "Target Amount": target_amounts,
-            "Delta Weight": delta_weights,
-            "Trade Amount": delta_amounts,
-        })
-
-        trades_df["Direction"] = np.where(trades_df["Trade Amount"] > 0, "Buy", "Sell")
-        trades_df["Abs Trade"] = trades_df["Trade Amount"].abs()
-
-        # Turnover as a simple liquidity indicator
-        turnover = trades_df["Abs Trade"].sum()
-
-        # Format for display
-        display_trades = (
-            trades_df
-            .assign(
-                **{
-                    "Current Weight (%)": lambda df: (df["Current Weight"] * 100).round(2),
-                    "Target Weight (%)": lambda df: (df["Target Weight"] * 100).round(2),
-                    "Δ Weight (pp)":     lambda df: (df["Delta Weight"] * 100).round(2),
-                    "Trade (Amount)":    lambda df: df["Trade Amount"].round(0),
-                }
-            )[["Asset", "Category", "Direction",
-               "Current Weight (%)", "Target Weight (%)", "Δ Weight (pp)", "Trade (Amount)"]]
-            .sort_values("Trade (Amount)", ascending=False)
+        st.success(
+            f"Rebalancing **not strictly required** based on the drift threshold "
+            f"({drift_threshold_pp:.1f} pp). Largest drift: {max_drift_asset} "
+            f"at {max_drift_pp:+.1f} pp."
         )
 
-        st.dataframe(display_trades, use_container_width=True)
+    st.divider()
 
-        st.caption(
-            f"Approximate one-off turnover to move from the base strategy to the "
-            f"scenario allocation: **{turnover:,.0f}** in notional terms."
+    # --------------------------------------------------------
+    # 2. Suggested trades (from equal-weight to target)
+    # --------------------------------------------------------
+    st.subheader("Suggested trades (from equal-weight to target allocation)")
+
+    trades_df = pd.DataFrame({
+        "Asset": filtered_tickers,
+        "Current weight (%)": (current_w * 100).round(1),
+        "Target weight (%)": (target_w * 100).round(1),
+        "Change (pp)": delta_pp.round(1),
+    })
+
+    # Direction & trade amount in base currency
+    trades_df["Direction"] = np.where(trades_df["Change (pp)"] > 0, "Buy", "Sell")
+    trades_df["Trade amount"] = (delta_w * investment_amount).round(0)
+    trades_df["Trade amount"] = trades_df["Trade amount"].astype(int)
+
+    # On filtre les micro-trades pour la lisibilité (|Δ| < 0.1 pp)
+    trades_df["abs_change"] = trades_df["Change (pp)"].abs()
+    trades_df = trades_df[trades_df["abs_change"] > 0.1]
+
+    # On trie par taille de mouvement décroissante
+    trades_df = trades_df.sort_values("abs_change", ascending=False)
+
+    # On enlève la colonne technique
+    trades_df = trades_df.drop(columns=["abs_change"])
+
+    if trades_df.empty:
+        st.info("No meaningful trades: all assets are already very close to target weights.")
+    else:
+        st.dataframe(
+            trades_df[
+                ["Asset", "Direction", "Trade amount",
+                 "Current weight (%)", "Target weight (%)", "Change (pp)"]
+            ],
+            use_container_width=True,
         )
+
+        st.caption("""
+        Positive trade amounts correspond to **buys**, negative amounts to **sells**.  
+        Changes are expressed in percentage points of portfolio weight, relative to
+        an equal-weight implementation in the selected assets.
+        """)
+
+    st.divider()
+
+    # --------------------------------------------------------
+    # 3. Rebalancing calendar / policy reminder
+    # --------------------------------------------------------
+    st.subheader("Rebalancing calendar & policy reminder")
+
+    # Approximate last & next rebalance dates based on the chosen frequency
+    today_ts = pd.to_datetime(end_date)
+    if rebalance_label == "Monthly":
+        last_reb = today_ts.replace(day=1) - pd.offsets.MonthEnd(1)
+        next_reb = today_ts + pd.offsets.MonthEnd(1)
+    elif rebalance_label == "Quarterly":
+        last_reb = today_ts - pd.offsets.QuarterEnd(1)
+        next_reb = today_ts + pd.offsets.QuarterEnd(1)
+    else:  # Yearly
+        last_reb = today_ts - pd.offsets.YearEnd(1)
+        next_reb = today_ts + pd.offsets.YearEnd(1)
+
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("**Last rebalance (approx.)**")
+        st.write(last_reb.date())
+        st.markdown("**Next expected rebalance window**")
+        st.write(next_reb.date())
+
+    with c2:
+        st.markdown("**Policy reminder**")
+        st.markdown(f"""
+        • **Frequency:** {rebalance_label}  
+        • **Drift threshold:** {drift_threshold_pp:.1f} percentage points  
+        • **Max weight per asset:** {max_weight:.0%}  
+        • **Universe:** {', '.join(filtered_tickers)}
+        """)
 
     st.caption("""
-    The trading instructions are indicative only. In practice, execution would 
-    take into account liquidity, costs, and operational constraints.
+    The dates above are indicative and based on the selected backtest frequency. 
+    In practice, the investment committee may also trigger off-cycle rebalancing 
+    when market moves cause drifts or risk metrics to breach policy limits.
     """)
