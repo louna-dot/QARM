@@ -239,33 +239,6 @@ def calculate_diversification_ratio(weights, cov_matrix, asset_vols):
     weighted_avg_vol = np.dot(weights, asset_vols)
     return float(weighted_avg_vol / port_vol)
                 
- def map_region(category: str, ticker: str) -> str:
-    """
-    Map a detailed Category / ticker to a broad geographic region.
-    This is intentionally simple and transparent for a client pitch.
-    """
-    cat = (category or "").lower()
-    t = (ticker or "").upper()
-
-    if "us " in cat or "u.s." in cat or "united states" in cat:
-        return "US"
-    if "europe" in cat or "euro" in cat or "eu " in cat:
-        return "Europe"
-    if "japan" in cat:
-        return "Japan"
-    if "emerging" in cat or "em " in cat or "emg" in cat:
-        return "Emerging Markets"
-    if "global" in cat or "total market" in cat or "world" in cat or "aggregate" in cat:
-        return "Global / Multi-Region"
-
-    # Petit fallback sur le ticker si on n'a rien trouvé dans Category
-    if t.endswith("JP"):
-        return "Japan"
-    if t.endswith("EU") or t.endswith("DE") or t.endswith("FR"):
-        return "Europe"
-
-    return "Other"
-       
 
 # ==========================================
 # 2. OPTIMIZATION LOGIC
@@ -616,21 +589,19 @@ with tab2:
 
     st.altair_chart(pie, use_container_width=True)
 
-    # --- 3) Geographic exposure (by underlying region) ---
+    
+        # --- 3) Geographic exposure (by region) ---
     st.subheader("Geographic exposure (by region)")
 
     st.caption("""
-    Exposure is grouped by broad economic region based on the underlying index 
-    of each ETF (e.g. US, Europe, Emerging Markets), not by listing venue or currency.
+    Exposure is grouped by the main economic region of each ETF's underlying index 
+    (e.g. United States, Europe, Emerging Markets), not by listing venue or currency.
     """)
 
     geo_df = (
         alloc_df
         .assign(
-            Region=lambda df: df.apply(
-                lambda row: map_region(row["Category"], row["Asset"]), axis=1
-            ),
-            Amount=lambda df: df["Weight"] * investment_amount,
+            Amount=lambda df: df["Weight"] * investment_amount
         )
         .groupby("Region", as_index=False)
         .agg({"Weight": "sum", "Amount": "sum"})
@@ -639,16 +610,13 @@ with tab2:
             Amount=lambda df: df["Amount"].round(0),
         )
         [["Region", "Weight_pct", "Amount"]]
-        .rename(columns={
-            "Weight_pct": "Weight (%)",
-            "Amount": "Amount",
-        })
+        .rename(columns={"Weight_pct": "Weight (%)"})
         .sort_values("Weight (%)", ascending=False)
     )
 
     st.dataframe(geo_df, use_container_width=True)
 
-    # (optionnel) un bar chart horizontal 
+    # (optionnel) petit bar chart horizontal pour visualiser
     geo_chart = (
         alt.Chart(geo_df)
         .mark_bar()
@@ -662,11 +630,11 @@ with tab2:
     st.altair_chart(geo_chart, use_container_width=True)
 
     st.caption("""
-    This view summarises the strategic regional footprint of the portfolio. 
-    Detailed holdings by instrument are shown in the *Strategic Allocation* table above.
+    This table summarises the portfolio's regional footprint. 
+    Detailed holdings remain visible in the Strategic Allocation table above.
     """)
 
-
+    
 
     # --- 4) Efficient Frontier view ---
     st.subheader("Efficient Frontier (Risk / Return Space)")
