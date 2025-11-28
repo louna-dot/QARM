@@ -320,7 +320,7 @@ risk_profile = st.sidebar.radio(
 time_horizon_years = st.sidebar.slider(
     "Investment horizon (years)",
     min_value=1,
-    max_value=40,
+    max_value=17,
     value=15
 )
 
