@@ -671,7 +671,7 @@ with tab3:
     or asset classes.
     """)
 
-    # --- 2) Clean Grouped Comparison Chart (Weight vs Risk Contribution) ---
+    # ---- 2) Capital vs Risk: horizontal bar charts ----
     st.subheader("Capital vs Risk")
 
     alloc_df_full = pd.DataFrame({
@@ -679,10 +679,8 @@ with tab3:
         "Weight": opt_weights,
         "Risk Contribution": final_rc
     })
-
     alloc_df_full = alloc_df_full[alloc_df_full["Weight"] > 0.001]
 
-    # Melt for grouped bar chart
     melted_df = alloc_df_full.melt(
         id_vars="Asset",
         value_vars=["Weight", "Risk Contribution"],
@@ -690,20 +688,34 @@ with tab3:
         value_name="Value"
     )
 
-    chart = (
+    horiz_chart = (
         alt.Chart(melted_df)
         .mark_bar()
         .encode(
-            x=alt.X("Asset:N", axis=alt.Axis(labelAngle=-45)),
-            y=alt.Y("Value:Q", axis=alt.Axis(format="%", title="Percentage of Portfolio")),
-            color=alt.Color("Metric:N", legend=alt.Legend(title="Metric")),
+            x=alt.X(
+                "Value:Q",
+                axis=alt.Axis(format="%", title="Percentage of Portfolio")
+            ),
+            y=alt.Y(
+                "Asset:N",
+                sort="-x",
+                axis=alt.Axis(title=None)
+            ),
+            color=alt.Color("Metric:N", legend=None),
             tooltip=["Asset", "Metric", alt.Tooltip("Value", format=".1%")],
-            column=alt.Column("Metric:N", spacing=10, title=None)
+            row=alt.Row("Metric:N", title=None)  # une ligne par métrique (Weight / RC)
         )
-        .properties(height=300)
+        .properties(height=120)
     )
 
-    st.altair_chart(chart, use_container_width=True)
+    st.altair_chart(horiz_chart, use_container_width=True)
+
+    st.caption("""
+    Each panel shows the percentage of the portfolio by asset: 
+    the top chart for capital allocation (Weight), the bottom one for 
+    risk allocation (Risk Contribution).
+    """)
+
 
 
 
