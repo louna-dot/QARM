@@ -507,11 +507,8 @@ top_c1.metric("Expected Return (p.a.)", f"{exp_ret*100:.1f}%")
 top_c2.metric("Volatility (p.a.)", f"{final_vol*100:.1f}%")
 top_c3.metric("Expected Shortfall (α)", f"{final_es_metric*100:.1f}%")
 top_c4.metric("Diversification Ratio", f"{div_ratio:.2f}")
-st.caption("""
-    These headline metrics provide a governance-level view of the portfolio’s 
-    risk/return profile. Detailed allocation and risk decomposition are available
-    in the subsequent tabs.
-    """)
+
+st.caption("These metrics provide a high-level snapshot of the portfolio. Use the tabs above to explore allocation, risk decomposition, scenario analysis, and implementation details.")
 
 st.divider()
 
