@@ -33,29 +33,30 @@ st.info(
 st.header(" 🔹 Implementation Strategy")
 st.markdown(
     """
-    To fulfill this mandate, we have deployed a proprietary optimization engine utilizing **Advanced Risk Budgeting Frameworks**. Each methodology reflects a different philosophy of diversifying,
-allocating risk, or incorporating forward-looking assumptions.
+To fulfill this mandate, we deploy several complementary allocation frameworks:
 
-    * **Equal Risk Contribution (ERC):** 
-        *   *Strategy:* Allocates capital such that every asset contributes an equal amount of risk to the total portfolio.
-        *   *Benefit:* Significantly improves resilience during equity market drawdowns by forcing diversification into uncorrelated assets.
-    
-    * **Most Diversified Portfolio (MDP):** 
-        *   *Strategy:* Maximizes the "Diversification Ratio" by aggressively weighting assets with low or negative correlations.
-        *   *Benefit:* Extracts the maximum theoretical "free lunch" of diversification, reducing volatility without necessarily sacrificing returns.
-    
-    * **Minimum Expected Shortfall (ES):** 
-        *   *Strategy:* Minimises Expected Shortfall (ES), the average loss in extreme downside scenarios.  
-        *   *Benefit:* Focuses on tail-risk protection and mitigates losses during crisis periods.
-    
-    * **Target Volatility (MVO):** 
-        *   *Strategy:* Adjusts portfolio weights so that annualised volatility matches a pre-defined volatility target.
-        *   *Benefit:* Maintains consistent risk exposure over time and aligns with mandates that impose volatility limits.
+### **Equal Risk Contribution (ERC)**
+- **Strategy:** Allocates capital such that each asset contributes the same amount of risk.
+- **Benefit:** Improves resilience during equity drawdowns by forcing diversification.
 
-    * **Equal Weight (Benchmark):** 
-        *   *Strategy:* Allocates the same weight to each asset.
-        *   *Benefit:* Simple, transparent, robust to estimation errors, and provides a clean benchmark for comparison.
-    """)
+### **Most Diversified Portfolio (MDP)**
+- **Strategy:** Maximises the diversification ratio by favouring low-correlation assets.
+- **Benefit:** Extracts the maximum theoretical diversification “free lunch.”
+
+### **Minimum Expected Shortfall (ES)**
+- **Strategy:** Minimises Expected Shortfall (tail loss beyond VaR).
+- **Benefit:** Provides downside protection during crisis periods.
+
+### **Target Volatility (MVO)**
+- **Strategy:** Adjusts weights so that annualised volatility matches a target.
+- **Benefit:** Maintains stable risk exposure and adheres to volatility limits.
+
+### **Equal Weight (Benchmark)**
+- **Strategy:** Allocates the same weight to each asset.
+- **Benefit:** Simple, robust, transparent reference allocation.
+"""
+)
+
 
 st.caption("""
 These five models cover the full spectrum of allocation philosophies: risk-balanced, 
@@ -98,6 +99,7 @@ st.markdown(
     unsafe_allow_html=True
 
 )
+
 
 
 
