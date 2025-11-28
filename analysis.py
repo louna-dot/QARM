@@ -671,7 +671,7 @@ with tab3:
     or asset classes.
     """)
 
-    # ---- 2) Capital vs Risk: side-by-side bars ----
+        # ---- 2) Capital vs Risk: two horizontal panels ----
     st.subheader("Capital vs Risk")
 
     alloc_df_full = pd.DataFrame({
@@ -681,7 +681,6 @@ with tab3:
     })
     alloc_df_full = alloc_df_full[alloc_df_full["Weight"] > 0.001]
 
-    # Melt for Altair
     melted_df = alloc_df_full.melt(
         id_vars="Asset",
         value_vars=["Weight", "Risk Contribution"],
@@ -689,37 +688,49 @@ with tab3:
         value_name="Value"
     )
 
-    side_by_side = (
+    base_chart = (
         alt.Chart(melted_df)
         .mark_bar()
         .encode(
-            y=alt.Y("Asset:N", sort="-x", title=None),
-            x=alt.X("Value:Q", axis=alt.Axis(format="%", title="Percentage of Portfolio")),
+            x=alt.X(
+                "Value:Q",
+                axis=alt.Axis(format="%", title="Percentage of Portfolio")
+            ),
+            y=alt.Y(
+                "Asset:N",
+                sort="-x",
+                axis=alt.Axis(title=None)
+            ),
+            tooltip=[
+                alt.Tooltip("Asset"),
+                alt.Tooltip("Metric"),
+                alt.Tooltip("Value", format=".1%")
+            ],
             color=alt.Color(
                 "Metric:N",
                 scale=alt.Scale(
                     domain=["Weight", "Risk Contribution"],
                     range=["#87CEFA", "#1F77B4"]  # bleu clair / bleu foncé
                 ),
-                legend=alt.Legend(title="Metric")
-            ),
-            tooltip=[
-                alt.Tooltip("Asset"),
-                alt.Tooltip("Metric"),
-                alt.Tooltip("Value", format=".1%")
-            ]
+                legend=None
+            )
         )
-        .properties(height=300)
+        .properties(height=100)
     )
 
-    st.altair_chart(side_by_side, use_container_width=True)
+    # Facette en deux lignes : Weight (en bas), Risk Contribution (en haut)
+    two_rows = base_chart.facet(
+        row=alt.Row("Metric:N", sort=["Risk Contribution", "Weight"], title=None)
+    ).resolve_scale(x="shared")
+
+    st.altair_chart(two_rows, use_container_width=True)
 
     st.caption("""
-    Each asset displays two bars: 
-    • Weight (capital allocation)  
-    • Risk Contribution (risk allocation).  
-    This highlights where risk concentration exceeds capital allocation.
+    Top panel: Risk Contribution (% of total portfolio risk) by asset.  
+    Bottom panel: Weight (% of capital) by asset.  
+    Aligning the two panels helps visualise where risk concentration exceeds capital allocation.
     """)
+
 
 
 # ============================================================
