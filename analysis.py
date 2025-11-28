@@ -671,7 +671,8 @@ with tab3:
     or asset classes.
     """)
 
-        # ---- 2) Capital vs Risk: two horizontal panels ----
+       
+     # ---- 2) Capital vs Risk: two horizontal panels ----
     st.subheader("Capital vs Risk")
 
     alloc_df_full = pd.DataFrame({
@@ -680,6 +681,10 @@ with tab3:
         "Risk Contribution": final_rc
     })
     alloc_df_full = alloc_df_full[alloc_df_full["Weight"] > 0.001]
+
+    # On choisit un ordre unique des actifs (par ex. décroissant en Weight)
+    alloc_df_full = alloc_df_full.sort_values("Weight", ascending=False)
+    asset_order = list(alloc_df_full["Asset"])
 
     melted_df = alloc_df_full.melt(
         id_vars="Asset",
@@ -698,7 +703,7 @@ with tab3:
             ),
             y=alt.Y(
                 "Asset:N",
-                sort="-x",
+                sort=asset_order,      # 👈 même ordre dans les deux panneaux
                 axis=alt.Axis(title=None)
             ),
             tooltip=[
@@ -718,7 +723,6 @@ with tab3:
         .properties(height=100)
     )
 
-    # Facette en deux lignes : Weight (en bas), Risk Contribution (en haut)
     two_rows = base_chart.facet(
         row=alt.Row("Metric:N", sort=["Risk Contribution", "Weight"], title=None)
     ).resolve_scale(x="shared")
@@ -728,8 +732,9 @@ with tab3:
     st.caption("""
     Top panel: Risk Contribution (% of total portfolio risk) by asset.  
     Bottom panel: Weight (% of capital) by asset.  
-    Aligning the two panels helps visualise where risk concentration exceeds capital allocation.
+    The same asset order is used in both panels to make comparisons easier.
     """)
+
 
 
 
