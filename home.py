@@ -57,7 +57,7 @@ allocating risk, or incorporating forward-looking assumptions.
         *   *Benefit:* Simple, transparent, robust to estimation errors, and provides a clean benchmark for comparison.
     """)
 
-    st.caption("""
+st.caption("""
 These five models cover the full spectrum of allocation philosophies: risk-balanced, 
 diversification-based, risk-targeted, downside-protected, and neutral benchmarks.
 """)
@@ -98,5 +98,6 @@ st.markdown(
     unsafe_allow_html=True
 
 )
+
 
 
