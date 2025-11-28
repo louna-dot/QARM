@@ -928,49 +928,42 @@ with tab4:
     holding the risk model constant.
     """)
 
-    # --- A3. Indicative trades (by instrument) ---
-    st.subheader("A3. Indicative trades by instrument")
+    # --- A3. Allocation changes by instrument (top 5) ---
+    st.subheader("A3. Allocation changes by instrument (top 5)")
 
-    # base = portefeuille courant (opt_weights), scenario = portefeuille sous scénario
-    base_w = opt_weights
-    scen_w = scenario_weights  # <- le vecteur de poids sous scénario que tu as déjà calculé
+    # base = portefeuille courant, scen_w = portefeuille sous scénario
+    base_w = opt_weights              # shape (n_assets,)
+    scen_w = scenario_weights         # même shape
 
     delta_w = scen_w - base_w
 
-    trades_df = pd.DataFrame({
+    changes_df = pd.DataFrame({
         "Asset": filtered_tickers,
         "Current weight (%)": (base_w * 100).round(1),
         "Scenario weight (%)": (scen_w * 100).round(1),
         "Change (pp)": (delta_w * 100).round(1),
-        "Direction": np.where(delta_w > 0, "Buy", "Sell"),
-        "Indicative trade (amount)": (np.abs(delta_w) * investment_amount).round(0),
     })
 
-    # on enlève les micro-trades pour la lisibilité
-    trades_df = trades_df[np.abs(trades_df["Change (pp)"]) > 0.1]
-
-    # on ordonne par taille de trade décroissante
-    trades_df = trades_df.sort_values("Indicative trade (amount)", ascending=False)
+    # On garde les 5 plus gros mouvements (en valeur absolue)
+    changes_df["abs_change"] = changes_df["Change (pp)"].abs()
+    top5_changes = (
+        changes_df
+        .sort_values("abs_change", ascending=False)
+        .head(5)
+        .drop(columns=["abs_change"])
+    )
 
     st.dataframe(
-        trades_df[
-            ["Asset",
-             "Direction",
-             "Indicative trade (amount)",
-             "Current weight (%)",
-             "Scenario weight (%)",
-             "Change (pp)"]
+        top5_changes[
+            ["Asset", "Current weight (%)", "Scenario weight (%)", "Change (pp)"]
         ],
         use_container_width=True,
     )
 
     st.caption("""
-    This table summarises **indicative rebalancing trades** to move from the 
-    current portfolio to the selected scenario: direction (Buy/Sell), 
-    trade size in base currency, and resulting target weights.
+    Top 5 allocation changes between the current portfolio and the selected scenario, 
+    expressed in percentage points of portfolio weight.
     """)
-
-
     
 
     # ========================================================
