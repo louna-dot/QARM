@@ -270,6 +270,12 @@ investment_amount = st.sidebar.number_input(
     format="%.0f"
 )
 
+# Profil de risque
+risk_profile = st.sidebar.radio(
+    "Risk level",
+    options=["Conservative", "Balanced", "Aggressive"],
+    index=1
+
 # Horizon de placement
 time_horizon_years = st.sidebar.slider(
     "Investment horizon (years)",
