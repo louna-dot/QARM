@@ -91,58 +91,25 @@ def get_asset_currency(tickers):
 
 @st.cache_data
 def load_data(tickers, start_date, rebalance_freq="M"):
-    """
-    Download price data, align start date to data availability, and compute
-    periodic returns & annualised mean/cov based on the rebalancing frequency.
-
-    Parameters
-    ----------
-    tickers : list[str]
-    start_date : date or str
-        User-requested start date (investment horizon).
-    rebalance_freq : str
-        Pandas resample code for rebalancing frequency:
-        'M' = Monthly, 'Q' = Quarterly, 'Y' = Yearly.
-
-    Returns
-    -------
-    returns_df : pd.DataFrame or None
-        Periodic returns (according to rebalance_freq).
-    mu : pd.Series or None
-        Annualised expected returns.
-    Sigma : pd.DataFrame or None
-        Annualised covariance matrix.
-    first_valid_str : str or None
-        Actual start date used (string format '%Y-%m-%d').
-    warning_msg : str or None
-        Warning if actual data start is significantly later than user start.
-    """
     end_date = datetime.now().strftime('%Y-%m-%d')
 
     try:
-        # Raw close prices
         data = yf.download(tickers, start=start_date, end=end_date)['Close']
         if data is None or data.empty:
             return None, None, None, None, None
 
-        # Drop columns that are entirely NaN
         data = data.dropna(axis=1, how='all')
         if data.empty:
             return None, None, None, None, None
 
-        # Ensure DataFrame even if single ticker
         if isinstance(data, pd.Series):
             data = data.to_frame()
 
-        # Align user start date with actual data availability:
-        # we take the latest first_valid_index across all tickers
         first_valid = data.apply(lambda col: col.first_valid_index()).max()
-
         user_start = pd.to_datetime(start_date).tz_localize(None)
         actual_start = pd.to_datetime(first_valid).tz_localize(None)
 
         warning_msg = None
-        # Only warn if the gap is > 5 days
         if (actual_start - user_start).days > 5:
             warning_msg = (
                 "⚠️ Data availability limited. "
@@ -150,33 +117,27 @@ def load_data(tickers, start_date, rebalance_freq="M"):
                 f"to {actual_start.date()}."
             )
 
-        # Align dataset to the actual start date and fill remaining small gaps
         data = data.loc[first_valid:].ffill().bfill()
 
-        # Resample prices to the chosen rebalancing frequency
-        returns_df = data.resample(rebalance_freq).last().pct_change().dropna()
-        if returns_df.empty:
-            return None, None, None, None, None
+        # Resample prices
+        rebalanced = data.resample(rebalance_freq).last().dropna()
+        returns_df = rebalanced.pct_change().dropna()
+        if returns_df.empty or len(returns_df) < 2:
+            st.warning("Pas assez de points après resampling pour calculer les statistiques.")
+            return returns_df, None, None, first_valid.strftime('%Y-%m-%d'), warning_msg
 
-        # Annualisation factor consistent with rebalancing frequency
-        if rebalance_freq == "M":
-            ann_factor = 12      # monthly
-        elif rebalance_freq == "Q":
-            ann_factor = 4       # quarterly
-        elif rebalance_freq == "Y":
-            ann_factor = 1       # yearly
-        else:
-            ann_factor = 12      # default fallback
+        # Annualisation factor
+        ann_factor = {"M": 12, "Q": 4, "Y": 1}.get(rebalance_freq, 12)
 
         mu = returns_df.mean() * ann_factor
         Sigma = returns_df.cov() * ann_factor
 
         return returns_df, mu, Sigma, first_valid.strftime('%Y-%m-%d'), warning_msg
 
-    except Exception:
-        # In case of any download / processing issue,
-        # return the same structure filled with None.
+    except Exception as e:
+        st.error(f"Erreur dans load_data: {e}")
         return None, None, None, None, None
+
 
 
 def calculate_portfolio_vol(weights, cov_matrix):
@@ -907,26 +868,52 @@ Rolling volatility provides insight into how portfolio risk evolved over time.
 A smoother profile indicates stable risk, whereas spikes reflect periods of stress.
     """)
 
-    window = st.slider(
-        "Rolling window (months)",
-        min_value=3,
-        max_value=36,
-        value=12,
-        step=1,
-        key="scenario_rolling_win",
-        help="Window length used to compute rolling volatility."
-    )
+window = st.slider(
+    "Rolling window (months)",
+    min_value=3,
+    max_value=36,
+    value=12,
+    step=1,
+    key="scenario_rolling_win",
+    help="Window length used to compute rolling volatility."
+)
 
-    rolling_port_vol = (
-        returns_df.dot(opt_weights)
-        .rolling(window=window)
-        .std()
-        * np.sqrt(12)
-    )
+if returns_df is not None and not returns_df.empty:
+    max_window = max(3, len(returns_df) // 2)  # limite raisonnable
 
-    asset_rolling_vol = returns_df.rolling(window=window).std() * np.sqrt(12)
-    max_vol_asset = asset_rolling_vol.mean().idxmax()
-    rolling_max_vol = asset_rolling_vol[max_vol_asset]
+    if window > len(returns_df):
+        st.warning(
+            f"Rolling window ({window}) trop grande pour {len(returns_df)} points disponibles. "
+            f"Fenêtre réduite automatiquement à {max_window}."
+        )
+        window = max_window
+
+    if window >= 2:
+        rolling_port_vol = (
+            returns_df.dot(opt_weights)
+            .rolling(window=window)
+            .std()
+            * np.sqrt(12)
+        )
+
+        asset_rolling_vol = returns_df.rolling(window=window).std() * np.sqrt(12)
+        max_vol_asset = asset_rolling_vol.mean().idxmax()
+        rolling_max_vol = asset_rolling_vol[max_vol_asset]
+
+        vol_plot_df = pd.DataFrame({
+            "Date": returns_df.index,
+            "Portfolio rolling vol": rolling_port_vol,
+            f"{max_vol_asset} rolling vol": rolling_max_vol,
+        })
+
+        vol_melted = vol_plot_df.melt("Date", var_name="Series", value_name="Volatility")
+
+        # ... garde ton code Altair tel quel ...
+    else:
+        st.warning("Pas assez de points pour appliquer un rolling window.")
+else:
+    st.warning("Pas de données disponibles pour l'analyse.")
+
 
     vol_plot_df = pd.DataFrame({
         "Date": returns_df.index,
