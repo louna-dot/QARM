@@ -478,16 +478,15 @@ with tab1:
 
     c1, c2, c3 = st.columns(3)
     c1.metric("Investment Amount", f"{investment_amount:,.0f}")
-    c2.metric("Risk Profile", risk_profile)
+    c2.metric("Strategy", strategy_choice)
     c3.metric("Investment Horizon", f"{time_horizon_years} years")
 
     st.subheader("Mandate summary")
     st.markdown(f"""
     • **Objective:** Long-term capital preservation and growth  
-    • **Risk tolerance:** {risk_profile}  
+    • **Allocation model:** *{strategy_choice}*  
     • **Investment horizon:** {time_horizon_years} years  
     • **Rebalancing frequency:** {rebalance_label}  
-    • **Allocation model:** *{strategy_choice}*  
     """)
 
 # ============================================================
