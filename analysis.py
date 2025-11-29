@@ -290,7 +290,7 @@ default_strategy_index = {
     "Conservative": 0,   # ERC
     "Balanced": 1,       # MDP
     "Aggressive": 3      # Target Vol
-}[risk_profile]
+}
 
 st.sidebar.header("2. Strategy Selection")
 strategy_choice = st.sidebar.selectbox(
