@@ -1055,11 +1055,8 @@ with tab5:
     s1, s2, s3, s4 = st.columns(4)
     s1.metric("Max drift (pp)", f"{max_drift_pp:+.1f}")
     s2.metric("Average drift (pp)", f"{avg_drift_pp:.1f}")
-    s3.metric("# assets above drift threshold", f"{n_breaches} / {n_assets_impl}")
-    s4.metric(
-        "Volatility: current → target",
-        f"{vol_current_impl*100:.1f}% → {vol_target_impl*100:.1f}%"
-    )
+    s3.metric("Assets above drift threshold", f"{n_breaches} / {n_assets_impl}")
+    s4.metric("Volatility: current → target", f"{vol_current_impl*100:.1f}% → {vol_target_impl*100:.1f}%")
 
     if n_breaches > 0:
         st.warning(
