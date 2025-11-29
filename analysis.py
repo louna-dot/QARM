@@ -859,102 +859,102 @@ with tab4:
     st.divider()
 
     # ----------------------------------------
-# C. DYNAMIC RISK ANALYSIS (ROLLING VOL)
-# ----------------------------------------
-st.subheader("C. Dynamic Risk Analysis (Rolling Volatility)")
+    # C. DYNAMIC RISK ANALYSIS (ROLLING VOL)
+    # ----------------------------------------
+    st.subheader("C. Dynamic Risk Analysis (Rolling Volatility)")
 
-st.write("""
-Rolling volatility provides insight into how portfolio risk evolved over time.
-A smoother profile indicates stable risk, whereas spikes reflect periods of stress.
-""")
+    st.write("""
+    Rolling volatility provides insight into how portfolio risk evolved over time.
+    A smoother profile indicates stable risk, whereas spikes reflect periods of stress.
+    """)
 
-window = st.slider(
-    "Rolling window (months)",
-    min_value=3,
-    max_value=36,
-    value=12,
-    step=1,
-    key="scenario_rolling_win",
-    help="Window length used to compute rolling volatility."
-)
-
-if returns_df is not None and not returns_df.empty:
-    max_window = max(3, len(returns_df) // 2)
-
-    if window > len(returns_df):
-        st.warning(
-            f"Rolling window ({window}) trop grande pour {len(returns_df)} points disponibles. "
-            f"Fenêtre réduite automatiquement à {max_window}."
-        )
-        window = max_window
-
-    if window >= 2:
-        rolling_port_vol = (
-            returns_df.dot(opt_weights)
-            .rolling(window=window)
-            .std()
-            * np.sqrt(12)
-        )
-
-        asset_rolling_vol = returns_df.rolling(window=window).std() * np.sqrt(12)
-        max_vol_asset = asset_rolling_vol.mean().idxmax()
-        rolling_max_vol = asset_rolling_vol[max_vol_asset]
-
-        vol_plot_df = pd.DataFrame({
-            "Date": returns_df.index,
-            "Portfolio rolling vol": rolling_port_vol,
-            f"{max_vol_asset} rolling vol": rolling_max_vol,
-        })
-    else:
-        st.warning("Pas assez de points pour appliquer un rolling window.")
-        vol_plot_df = pd.DataFrame({"Date": returns_df.index})
-else:
-    st.warning("Pas de données disponibles pour l'analyse.")
-    vol_plot_df = pd.DataFrame({"Date": []})
-
-# Toujours construire le graphique si possible
-if not vol_plot_df.empty and "Portfolio rolling vol" in vol_plot_df.columns:
-    vol_melted = vol_plot_df.melt("Date", var_name="Series", value_name="Volatility")
-
-    unique_years = sorted(returns_df.index.year.unique())
-    tick_values = [pd.Timestamp(f"{y}-01-01") for y in unique_years]
-
-    dynamic_risk_chart = (
-        alt.Chart(vol_melted)
-        .mark_line(strokeWidth=2)
-        .encode(
-            x=alt.X(
-                "Date:T",
-                axis=alt.Axis(
-                    title="Year",
-                    format="%Y",
-                    values=tick_values,
-                    grid=True
-                )
-            ),
-            y=alt.Y(
-                "Volatility:Q",
-                axis=alt.Axis(format="%", title="Annualised volatility"),
-            ),
-            color=alt.Color(
-                "Series:N",
-                legend=alt.Legend(title="Series"),
-                scale=alt.Scale(scheme="tableau10")
-            ),
-            tooltip=[
-                alt.Tooltip("Date:T", format="%b %Y"),
-                "Series:N",
-                alt.Tooltip("Volatility:Q", format=".2%"),
-            ],
-        )
-        .properties(height=350)
-        .interactive()
+    window = st.slider(
+        "Rolling window (months)",
+        min_value=3,
+        max_value=36,
+        value=12,
+        step=1,
+        key="scenario_rolling_win",
+        help="Window length used to compute rolling volatility."
     )
 
-    st.altair_chart(dynamic_risk_chart, use_container_width=True)
-    st.caption("The portfolio's rolling volatility is compared against the riskiest underlying asset over the same period.")
-else:
-    st.info("Graphique non disponible pour ces paramètres.")
+    if returns_df is not None and not returns_df.empty:
+        max_window = max(3, len(returns_df) // 2)
+
+        if window > len(returns_df):
+            st.warning(
+                f"Rolling window ({window}) trop grande pour {len(returns_df)} points disponibles. "
+                f"Fenêtre réduite automatiquement à {max_window}."
+            )
+            window = max_window
+
+        if window >= 2:
+            rolling_port_vol = (
+                returns_df.dot(opt_weights)
+                .rolling(window=window)
+                .std()
+                * np.sqrt(12)
+            )
+
+            asset_rolling_vol = returns_df.rolling(window=window).std() * np.sqrt(12)
+            max_vol_asset = asset_rolling_vol.mean().idxmax()
+            rolling_max_vol = asset_rolling_vol[max_vol_asset]
+
+            vol_plot_df = pd.DataFrame({
+                "Date": returns_df.index,
+                "Portfolio rolling vol": rolling_port_vol,
+                f"{max_vol_asset} rolling vol": rolling_max_vol,
+            })
+        else:
+            st.warning("Pas assez de points pour appliquer un rolling window.")
+            vol_plot_df = pd.DataFrame({"Date": returns_df.index})
+    else:
+        st.warning("Pas de données disponibles pour l'analyse.")
+        vol_plot_df = pd.DataFrame({"Date": []})
+
+    # Toujours construire le graphique si possible
+    if not vol_plot_df.empty and "Portfolio rolling vol" in vol_plot_df.columns:
+        vol_melted = vol_plot_df.melt("Date", var_name="Series", value_name="Volatility")
+
+        unique_years = sorted(returns_df.index.year.unique())
+        tick_values = [pd.Timestamp(f"{y}-01-01") for y in unique_years]
+
+        dynamic_risk_chart = (
+            alt.Chart(vol_melted)
+            .mark_line(strokeWidth=2)
+            .encode(
+                x=alt.X(
+                    "Date:T",
+                    axis=alt.Axis(
+                        title="Year",
+                        format="%Y",
+                        values=tick_values,
+                        grid=True
+                    )
+                ),
+                y=alt.Y(
+                    "Volatility:Q",
+                    axis=alt.Axis(format="%", title="Annualised volatility"),
+                ),
+                color=alt.Color(
+                    "Series:N",
+                    legend=alt.Legend(title="Series"),
+                    scale=alt.Scale(scheme="tableau10")
+                ),
+                tooltip=[
+                    alt.Tooltip("Date:T", format="%b %Y"),
+                    "Series:N",
+                    alt.Tooltip("Volatility:Q", format=".2%"),
+                ],
+            )
+            .properties(height=350)
+            .interactive()
+        )
+
+        st.altair_chart(dynamic_risk_chart, use_container_width=True)
+        st.caption("The portfolio's rolling volatility is compared against the riskiest underlying asset over the same period.")
+    else:
+        st.info("Graphique non disponible pour ces paramètres.")
 
 # ============================================================
 #  TAB 5 — IMPLEMENTATION & REBALANCING
