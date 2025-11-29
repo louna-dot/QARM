@@ -278,7 +278,9 @@ time_horizon_years = st.sidebar.slider(
     value=15
 )
 
-# Mapping profil de risque → stratégie par défaut
+# Choix de stratégie
+st.sidebar.header("2. Strategy Selection")
+
 strategy_options = [
     "Equal Risk Contribution (ERC)",
     "Most Diversified Portfolio (MDP)",
@@ -286,19 +288,14 @@ strategy_options = [
     "Target Volatility (MVO)",
     "Equal Weight (Benchmark)"
 ]
-default_strategy_index = {
-    "Conservative": 0,   # ERC
-    "Balanced": 1,       # MDP
-    "Aggressive": 3      # Target Vol
-}
 
-st.sidebar.header("2. Strategy Selection")
 strategy_choice = st.sidebar.selectbox(
     "Allocation model:",
     strategy_options,
-    index=default_strategy_index
+    index=0  # ERC par défaut
 )
 
+# Paramètres avancés
 with st.sidebar.expander("🛠️ Portfolio & Data Settings", expanded=True):
 
     # Classes d’actifs haut niveau pour filtrer l’univers (optionnel)
@@ -309,7 +306,7 @@ with st.sidebar.expander("🛠️ Portfolio & Data Settings", expanded=True):
         default=asset_class_choices[:-1]  # par défaut sans Crypto
     )
 
-    # Universe de tickers (toujours modifiable manuellement)
+    # Universe de tickers (modifiable)
     default_tickers = "SPY, TLT, GLD, VNQ, QQQ, EEM, EMB"
     ticker_input = st.text_input("Assets (comma separated)", value=default_tickers)
     tickers = [x.strip().upper() for x in ticker_input.split(',') if x.strip()]
@@ -328,31 +325,20 @@ with st.sidebar.expander("🛠️ Portfolio & Data Settings", expanded=True):
     start_date = (pd.to_datetime(end_date) - pd.DateOffset(years=time_horizon_years)).date()
     st.caption(f"Backtest period: {start_date} → {end_date}")
 
-    # Max weight par titre (plus strict si profil prudent)
-    default_max_weight = {
-        "Conservative": 0.25,
-        "Balanced": 0.35,
-        "Aggressive": 0.50
-    }
+    # Max weight par titre (valeur fixe par défaut)
     max_weight = st.slider(
         "Max weight per asset",
-        0.05, 1.0, float(default_max_weight), 0.05
+        0.05, 1.0, 0.35, 0.05
     )
-    
+
     # Paramètres spécifiques aux stratégies
     target_vol_input = 0.10
     alpha_input = 0.95
 
     if strategy_choice == "Target Volatility (MVO)":
-        # cible de volatilité selon profil de risque
-        default_tv = {
-            "Conservative": 0.08,
-            "Balanced": 0.12,
-            "Aggressive": 0.18
-        }
         target_vol_input = st.slider(
             "Target volatility (annualised)",
-            0.05, 0.30, float(default_tv), 0.01
+            0.05, 0.30, 0.10, 0.01
         )
 
     elif strategy_choice == "Minimum Expected Shortfall (ES)":
@@ -360,6 +346,7 @@ with st.sidebar.expander("🛠️ Portfolio & Data Settings", expanded=True):
             "Confidence level (α)",
             0.90, 0.99, 0.95
         )
+
 
 
 # ==========================================
