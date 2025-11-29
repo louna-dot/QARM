@@ -465,6 +465,14 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "Implementation & Rebalancing"
 ])
 
+strategy_choice_short = {
+    "Equal Risk Contribution (ERC)": "ERC",
+    "Minimum Expected Shortfall (ES)": "Min ES",
+    "Target Volatility (MVO)": "MVO",
+    "Most Diversified Portfolio (MDP)": "MDP",
+    "Equal Weight (Benchmark)": "Benchmark"
+}[strategy_choice]
+
 # ============================================================
 #  TAB 1 — INVESTOR OVERVIEW
 # ============================================================
@@ -478,13 +486,13 @@ with tab1:
 
     c1, c2, c3 = st.columns(3)
     c1.metric("Investment Amount", f"{investment_amount:,.0f}")
-    c2.metric("Strategy", strategy_choice)
+    c2.metric("Strategy", strategy_choice_short)
     c3.metric("Investment Horizon", f"{time_horizon_years} years")
 
     st.subheader("Mandate summary")
     st.markdown(f"""
     • **Objective:** Long-term capital preservation and growth  
-    • **Allocation model:** *{strategy_choice}*  
+    • **Allocation model:** *{strategy_choice_short}*  
     • **Investment horizon:** {time_horizon_years} years  
     • **Rebalancing frequency:** {rebalance_label}  
     """)
