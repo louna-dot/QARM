@@ -335,16 +335,6 @@ with st.sidebar.expander("🛠️ Portfolio & Data Settings", expanded=True):
     start_date = (pd.to_datetime(end_date) - pd.DateOffset(years=time_horizon_years)).date()
     st.caption(f"Backtest period: {start_date} → {end_date}")
 
-    # Max weight par titre (plus strict si profil prudent)
-    default_max_weight = {
-        "Conservative": 0.25,
-        "Balanced": 0.35,
-        "Aggressive": 0.50
-    }[risk_profile]
-    max_weight = st.slider(
-        "Max weight per asset",
-        0.05, 1.0, float(default_max_weight), 0.05
-    )
 
     # Paramètres spécifiques aux stratégies
     target_vol_input = 0.10
