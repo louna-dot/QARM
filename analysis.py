@@ -859,14 +859,14 @@ with tab4:
     st.divider()
 
     # ----------------------------------------
-    # C. DYNAMIC RISK ANALYSIS (ROLLING VOL)
-    # ----------------------------------------
-    st.subheader("C. Dynamic Risk Analysis (Rolling Volatility)")
+# C. DYNAMIC RISK ANALYSIS (ROLLING VOL)
+# ----------------------------------------
+st.subheader("C. Dynamic Risk Analysis (Rolling Volatility)")
 
-    st.write("""
+st.write("""
 Rolling volatility provides insight into how portfolio risk evolved over time.
 A smoother profile indicates stable risk, whereas spikes reflect periods of stress.
-    """)
+""")
 
 window = st.slider(
     "Rolling window (months)",
@@ -879,7 +879,7 @@ window = st.slider(
 )
 
 if returns_df is not None and not returns_df.empty:
-    max_window = max(3, len(returns_df) // 2)  # limite raisonnable
+    max_window = max(3, len(returns_df) // 2)
 
     if window > len(returns_df):
         st.warning(
@@ -905,22 +905,15 @@ if returns_df is not None and not returns_df.empty:
             "Portfolio rolling vol": rolling_port_vol,
             f"{max_vol_asset} rolling vol": rolling_max_vol,
         })
-
-        vol_melted = vol_plot_df.melt("Date", var_name="Series", value_name="Volatility")
-
-        # ... garde ton code Altair tel quel ...
     else:
         st.warning("Pas assez de points pour appliquer un rolling window.")
+        vol_plot_df = pd.DataFrame({"Date": returns_df.index})
 else:
     st.warning("Pas de données disponibles pour l'analyse.")
+    vol_plot_df = pd.DataFrame({"Date": []})
 
-
-    vol_plot_df = pd.DataFrame({
-        "Date": returns_df.index,
-        "Portfolio rolling vol": rolling_port_vol,
-        f"{max_vol_asset} rolling vol": rolling_max_vol,
-    })
-
+# Toujours construire le graphique si possible
+if not vol_plot_df.empty and "Portfolio rolling vol" in vol_plot_df.columns:
     vol_melted = vol_plot_df.melt("Date", var_name="Series", value_name="Volatility")
 
     unique_years = sorted(returns_df.index.year.unique())
@@ -960,6 +953,8 @@ else:
 
     st.altair_chart(dynamic_risk_chart, use_container_width=True)
     st.caption("The portfolio's rolling volatility is compared against the riskiest underlying asset over the same period.")
+else:
+    st.info("Graphique non disponible pour ces paramètres.")
 
 # ============================================================
 #  TAB 5 — IMPLEMENTATION & REBALANCING
