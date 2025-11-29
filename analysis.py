@@ -333,7 +333,7 @@ with st.sidebar.expander("🛠️ Portfolio & Data Settings", expanded=True):
         "Conservative": 0.25,
         "Balanced": 0.35,
         "Aggressive": 0.50
-    }[risk_profile]
+    }
     max_weight = st.slider(
         "Max weight per asset",
         0.05, 1.0, float(default_max_weight), 0.05
@@ -349,7 +349,7 @@ with st.sidebar.expander("🛠️ Portfolio & Data Settings", expanded=True):
             "Conservative": 0.08,
             "Balanced": 0.12,
             "Aggressive": 0.18
-        }[risk_profile]
+        }
         target_vol_input = st.slider(
             "Target volatility (annualised)",
             0.05, 0.30, float(default_tv), 0.01
