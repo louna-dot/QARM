@@ -33,35 +33,43 @@ st.info(
 st.header(" 🔹 Implementation Strategy")
 st.markdown(
     """
-To fulfill this mandate, we deploy several complementary allocation frameworks:
+To fulfill this mandate, we deploy several complementary allocation frameworks.  
+Each framework reflects a distinct **allocation philosophy** — ranging from conservative 
+downside protection to balanced diversification and aggressive growth orientation:
 
-### **Equal Risk Contribution (ERC)**
+### **Minimum Expected Shortfall (ES) — Conservative**
+- **Strategy:** Minimises Expected Shortfall (tail loss beyond VaR).
+- **Philosophy:** Defensive allocation, focused on limiting extreme losses.
+- **Benefit:** Provides downside protection during crisis periods.
+
+### **Equal Risk Contribution (ERC) — Balanced**
 - **Strategy:** Allocates capital such that each asset contributes the same amount of risk.
+- **Philosophy:** Balanced allocation, equalising risk contributions across assets.
 - **Benefit:** Improves resilience during equity drawdowns by forcing diversification.
+
+### **Target Volatility (MVO) — Aggressive**
+- **Strategy:** Adjusts weights so that annualised volatility matches a target.
+- **Philosophy:** Growth-oriented allocation, targeting higher risk/return profiles.
+- **Benefit:** Maintains stable risk exposure while allowing for higher expected returns.
 
 ### **Most Diversified Portfolio (MDP)**
 - **Strategy:** Maximises the diversification ratio by favouring low-correlation assets.
-- **Benefit:** Extracts the maximum theoretical diversification “free lunch.”
-
-### **Minimum Expected Shortfall (ES)**
-- **Strategy:** Minimises Expected Shortfall (tail loss beyond VaR).
-- **Benefit:** Provides downside protection during crisis periods.
-
-### **Target Volatility (MVO)**
-- **Strategy:** Adjusts weights so that annualised volatility matches a target.
-- **Benefit:** Maintains stable risk exposure and adheres to volatility limits.
+- **Philosophy:** Diversification-maximising, extracting the maximum theoretical “free lunch.”
+- **Benefit:** Enhances robustness by spreading exposure across uncorrelated assets.
 
 ### **Equal Weight (Benchmark)**
 - **Strategy:** Allocates the same weight to each asset.
-- **Benefit:** Simple, robust, transparent reference allocation.
+- **Philosophy:** Neutral benchmark, simple and transparent.
+- **Benefit:** Serves as a reference allocation for comparison.
 """
 )
 
-
 st.caption("""
-These five models cover the full spectrum of allocation philosophies: risk-balanced, 
-diversification-based, risk-targeted, downside-protected, and neutral benchmarks.
+These five models span the full spectrum of allocation philosophies: 
+**Conservative (Min ES)**, **Balanced (ERC)**, **Aggressive (MVO)**, plus diversification-based (MDP) 
+and neutral benchmark approaches.
 """)
+
 
 # --- 4. Dashboard Workflow ---
 st.header("🔹 Operational Workflow")
@@ -99,6 +107,7 @@ st.markdown(
     unsafe_allow_html=True
 
 )
+
 
 
 
