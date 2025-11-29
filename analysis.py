@@ -13,65 +13,82 @@ import altair as alt
 @st.cache_data
 def get_asset_info(tickers):
     """
-    Classify assets into broad categories (Equity, Bond, Commodities, etc.)
-    using a mix of a hard-coded ETF map and yfinance metadata.
+    Classify assets into broad categories.
+    Robustness Fix: Defaults failed/unknown lookups to 'Equities - Unclassified' 
+    so they are not hidden by the sidebar filter.
     """
     known_etfs = {
-        'SPY': 'Equities - US Large Cap', 
-        'QQQ': 'Equities - US Tech', 
+        'SPY': 'Equities - US Large Cap',
+        'QQQ': 'Equities - US Tech',
         'DIA': 'Equities - US Value',
-        'IWM': 'Equities - US Small Cap', 
-        'EEM': 'Equities - Emerging Markets', 
+        'IWM': 'Equities - US Small Cap',
+        'EEM': 'Equities - Emerging Markets',
         'VTI': 'Equities - Total Market',
-        'VGK': 'Equities - Europe', 
+        'VGK': 'Equities - Europe',
         'EWJ': 'Equities - Japan',
-
-        'TLT': 'Bonds - US Long Term', 
-        'IEF': 'Bonds - US Interm.', 
+        'TLT': 'Bonds - US Long Term',
+        'IEF': 'Bonds - US Interm.',
         'SHY': 'Bonds - US Short',
-        'LQD': 'Bonds - Corporate', 
-        'HYG': 'Bonds - High Yield', 
+        'LQD': 'Bonds - Corporate',
+        'HYG': 'Bonds - High Yield',
         'EMB': 'Bonds - Emerging Markets',
-        'BND': 'Bonds - Total Market', 
+        'BND': 'Bonds - Total Market',
         'AGG': 'Bonds - Aggregate',
-
-        'GLD': 'Commodities - Gold', 
-        'SLV': 'Commodities - Silver', 
-        'USO': 'Commodities - Oil', 
+        'GLD': 'Commodities - Gold',
+        'SLV': 'Commodities - Silver',
+        'USO': 'Commodities - Oil',
         'DBC': 'Commodities - Broad',
-
-        'VNQ': 'Real Estate (REITs)', 
-        'BTC-USD': 'Crypto', 
+        'VNQ': 'Real Estate (REITs)',
+        'BTC-USD': 'Crypto',
         'ETH-USD': 'Crypto'
     }
-    
+
     classification = {}
+    
     for t in tickers:
-        # 1) Known ETF / asset mapping
-        if t in known_etfs:
-            classification[t] = known_etfs[t]
+        # 1. Clean ticker string just in case
+        t_clean = t.strip().upper()
+        
+        # 2. Check Known Map first
+        if t_clean in known_etfs:
+            classification[t] = known_etfs[t_clean]
             continue
 
-        # 2) Try to infer from yfinance metadata
+        # 3. Try to infer from yfinance
         try:
-            info = yf.Ticker(t).info
-            q_type = info.get('quoteType', 'UNKNOWN')
-
+            info = yf.Ticker(t_clean).info
+            # Use .get() with defaults to prevent KeyErrors
+            q_type = info.get('quoteType', 'UNKNOWN').upper()
+            
             if q_type == 'EQUITY':
-                sector = info.get('sector', 'Equities - General')
-                classification[t] = f"Stock - {sector}"
-
+                sector = info.get('sector', 'General')
+                # Prefix ensures it passes the "Equities" filter
+                classification[t] = f"Equities - {sector}"
+            
             elif q_type == 'CRYPTOCURRENCY':
                 classification[t] = "Crypto"
-
+                
             elif q_type == 'FUTURE':
-                classification[t] = "Futures/Commodities"
-
+                classification[t] = "Commodities - Futures"
+                
+            elif q_type == 'ETF':
+                # Attempt to guess asset class from summary description or name
+                # If unknown, default to Equities so it's visible
+                classification[t] = "Equities - ETF (Unspecified)"
+                
+            elif q_type == 'MUTUALFUND':
+                classification[t] = "Equities - Mutual Fund"
+                
             else:
-                classification[t] = "ETF / Other"
+                # If it's something weird, label it Other but maybe default to Equity for visibility?
+                # Safer to map UNKNOWN to Equities for user visibility
+                classification[t] = "Equities - Other"
 
         except Exception:
-            classification[t] = "Unclassified"
+            # NETWORK/API FAILURE FALLBACK
+            # Crucial: If yfinance fails, we assume it's a Stock (Equity) 
+            # so the user can still see it in the dashboard.
+            classification[t] = "Equities - Unclassified"
 
     return classification
 
@@ -375,8 +392,9 @@ with st.spinner("Fetching data and optimizing..."):
         st.error("Please select at least 2 assets in the chosen asset classes.")
         st.stop()
 
-    # 2. Charger les données
-    returns_df, mu, Sigma, _, date_warning = load_data(
+    # 2. Charger les donnГ©es
+    # FIX: Unpack 'price_start_date_str' (4th variable) instead of ignoring it with '_'
+    returns_df, mu, Sigma, price_start_date_str, date_warning = load_data(
         filtered_tickers,
         start_date,
         rebalance_freq=rebalance_freq
@@ -388,6 +406,29 @@ with st.spinner("Fetching data and optimizing..."):
 
     if date_warning:
         st.warning(date_warning)
+
+    # FIX: Check if the actual data length is significantly shorter than the requested horizon.
+    # We use 'price_start_date_str' to include the first period consumed by calculation (crucial for Yearly freq).
+    if price_start_date_str:
+        # Convert string to datetime and ensure timezone-naive for subtraction
+        price_start = pd.to_datetime(price_start_date_str)
+        if price_start.tzinfo is not None:
+            price_start = price_start.tz_localize(None)
+        
+        last_date = returns_df.index[-1]
+        if last_date.tzinfo is not None:
+            last_date = last_date.tz_localize(None)
+
+        actual_years = (last_date - price_start).days / 365.25
+    else:
+        # Fallback
+        actual_years = (returns_df.index[-1] - returns_df.index[0]).days / 365.25
+
+    if actual_years < (time_horizon_years - 0.8): # Increased tolerance slightly
+        st.warning(
+            f"**History Truncated:** You requested {time_horizon_years} years, but the available data covers only {actual_years:.1f} years. "
+            "This is usually caused by including a young asset (e.g., Crypto or a recent ETF) which limits the history of the entire portfolio."
+        )
 
     # 3. Optimisation
     opt_weights = run_optimization(
@@ -465,14 +506,6 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "Implementation & Rebalancing"
 ])
 
-strategy_choice_short = {
-    "Equal Risk Contribution (ERC)": "ERC",
-    "Minimum Expected Shortfall (ES)": "Min ES",
-    "Target Volatility (MVO)": "MVO",
-    "Most Diversified Portfolio (MDP)": "MDP",
-    "Equal Weight (Benchmark)": "Benchmark"
-}[strategy_choice]
-
 # ============================================================
 #  TAB 1 — INVESTOR OVERVIEW
 # ============================================================
@@ -485,14 +518,22 @@ with tab1:
     """)
 
     c1, c2, c3 = st.columns(3)
+        
+    # FIX: Extract only the acronym/short name inside parentheses
+    # e.g., "Equal Risk Contribution (ERC)" -> "ERC"
+    if "(" in strategy_choice:
+        strategy_display = strategy_choice.split("(")[1].replace(")", "")
+    else:
+        strategy_display = strategy_choice
+
     c1.metric("Investment Amount", f"{investment_amount:,.0f}")
-    c2.metric("Strategy", strategy_choice_short)
+    c2.metric("Strategy", strategy_display)
     c3.metric("Investment Horizon", f"{time_horizon_years} years")
 
     st.subheader("Mandate summary")
     st.markdown(f"""
     • **Objective:** Long-term capital preservation and growth  
-    • **Allocation model:** *{strategy_choice_short}*  
+    • **Allocation model:** *{strategy_choice}*  
     • **Investment horizon:** {time_horizon_years} years  
     • **Rebalancing frequency:** {rebalance_label}  
     """)
@@ -525,14 +566,75 @@ with tab2:
         use_container_width=True
     )
 
+    
     # --- 2) Pie chart by asset class ---
     st.subheader("Allocation by Asset Class (Pie Chart)")
+    alloc_df_filtered = alloc_df[alloc_df["Weight"] > 0.001].copy()
 
-    alloc_df_filtered = alloc_df[alloc_df["Weight"] > 0.001]
+    # FIX: Robust Color Logic with Rotating Palettes
+    # This ensures that if we have multiple new sectors (e.g. Tech, Consumer),
+    # they get DIFFERENT shades of blue instead of the same one.
 
+    # 1. Fixed colors for common assets (Stability)
+    fixed_map = {
+        "Equities - US Large Cap": "#1f77b4",      # Standard Blue
+        "Equities - Emerging Markets": "#aec7e8",  # Light Blue
+        "Bonds - US Long Term": "#ff7f0e",         # Standard Orange
+        "Bonds - High Yield": "#ffbb78",           # Light Orange
+        "Commodities - Gold": "#e377c2",           # Pink
+        "Real Estate (REITs)": "#9467bd",          # Purple
+        "Crypto": "#8c564b",                       # Brown
+        "Cash": "#7f7f7f"                          # Grey
+    }
+
+    # 2. Backup Palettes (Cycle through these for new categories)
+    # Distinct Blues/Greens for extra Equities
+    equity_pool = ["#17becf", "#9edae5", "#2ca02c", "#98df8a", "#4c78a8", "#76b7b2"]
+    # Distinct Oranges/Reds for extra Bonds
+    bond_pool   = ["#d62728", "#ff9896", "#f28e2b", "#e15759"]
+    # Others
+    other_pool  = ["#c49c94", "#c5b0d5", "#dbdb8d", "#9d7660"]
+
+    final_domain = []
+    final_range = []
+
+    # Counters to rotate through the pools
+    e_idx, b_idx, o_idx = 0, 0, 0
+
+    present_categories = alloc_df_filtered["Category"].unique()
+
+    for cat in present_categories:
+        final_domain.append(cat)
+        
+        # A) Strict Match
+        if cat in fixed_map:
+            final_range.append(fixed_map[cat])
+        
+        # B) Family Match (Rotate colors)
+        elif "Equities" in cat:
+            # Pick next color in the pool, loop back if we run out
+            col = equity_pool[e_idx % len(equity_pool)]
+            final_range.append(col)
+            e_idx += 1
+            
+        elif "Bonds" in cat:
+            col = bond_pool[b_idx % len(bond_pool)]
+            final_range.append(col)
+            b_idx += 1
+            
+        else:
+            col = other_pool[o_idx % len(other_pool)]
+            final_range.append(col)
+            o_idx += 1
+
+    # 3. Plot
     pie = alt.Chart(alloc_df_filtered).mark_arc(innerRadius=60).encode(
         theta=alt.Theta(field="Weight", type="quantitative"),
-        color=alt.Color(field="Category", type="nominal"),
+        color=alt.Color(
+            field="Category", 
+            type="nominal",
+            scale=alt.Scale(domain=final_domain, range=final_range)
+        ),
         tooltip=["Category", "Asset", alt.Tooltip("Weight", format=".1%")]
     ).properties(title="Portfolio Exposure").interactive()
 
@@ -866,80 +968,68 @@ with tab4:
     )
 
     if returns_df is not None and not returns_df.empty:
-        max_window = max(3, len(returns_df) // 2)
-
-        if window > len(returns_df):
-            st.warning(
-                f"Rolling window ({window}) trop grande pour {len(returns_df)} points disponibles. "
-                f"Fenêtre réduite automatiquement à {max_window}."
+        # FIX: Dynamic frequency handling
+        ann_factor_map = {"M": 12, "Q": 4, "Y": 1}
+        freq_factor = ann_factor_map.get(rebalance_freq, 12)
+        
+        # Adjust effective window logic based on frequency
+        if rebalance_freq == "Y":
+            # FIX: Use np.ceil so 13 months snaps to 2 years immediately.
+            # This ensures the graph updates when moving the slider, rather than waiting for 36.
+            years_val = np.ceil(window / 12)
+            effective_window = max(2, int(years_val))
+            st.caption(
+                f"в„№пёЏ **Yearly Mode:** Slider snaps to nearest full year to ensure sufficient data points. "
+                f"Effective window: {effective_window} Year(s)."
             )
-            window = max_window
-
-        if window >= 2:
-            rolling_port_vol = (
-                returns_df.dot(opt_weights)
-                .rolling(window=window)
-                .std()
-                * np.sqrt(12)
-            )
-
-            asset_rolling_vol = returns_df.rolling(window=window).std() * np.sqrt(12)
-            max_vol_asset = asset_rolling_vol.mean().idxmax()
-            rolling_max_vol = asset_rolling_vol[max_vol_asset]
-
-            vol_plot_df = pd.DataFrame({
-                "Date": returns_df.index,
-                "Portfolio rolling vol": rolling_port_vol,
-                f"{max_vol_asset} rolling vol": rolling_max_vol,
-            })
+        elif rebalance_freq == "Q":
+            effective_window = max(2, int(np.ceil(window / 3)))
         else:
-            st.warning("Pas assez de points pour appliquer un rolling window.")
-            vol_plot_df = pd.DataFrame({"Date": returns_df.index})
-    else:
-        st.warning("Pas de données disponibles pour l'analyse.")
-        vol_plot_df = pd.DataFrame({"Date": []})
+            effective_window = window
 
-    # Toujours construire le graphique si possible
-    if not vol_plot_df.empty and "Portfolio rolling vol" in vol_plot_df.columns:
+        # Safety check for length
+        if effective_window >= len(returns_df):
+            effective_window = max(2, len(returns_df) - 1)
+            st.caption("вљ пёЏ Rolling window reduced to fit available data length.")
+
+        # Calculate Rolling Volatility
+        rolling_port_vol = (
+            returns_df.dot(opt_weights)
+            .rolling(window=effective_window)
+            .std()
+            * np.sqrt(freq_factor) 
+        )
+        
+        asset_rolling_vol = returns_df.rolling(window=effective_window).std() * np.sqrt(freq_factor)
+        
+        # Find riskiest asset
+        max_vol_asset = asset_rolling_vol.mean().idxmax()
+        rolling_max_vol = asset_rolling_vol[max_vol_asset]
+
+        vol_plot_df = pd.DataFrame({
+            "Date": returns_df.index,
+            "Portfolio rolling vol": rolling_port_vol,
+            f"{max_vol_asset} rolling vol": rolling_max_vol,
+        })
+
+        # Melt and Plot
         vol_melted = vol_plot_df.melt("Date", var_name="Series", value_name="Volatility")
-
-        unique_years = sorted(returns_df.index.year.unique())
-        tick_values = [pd.Timestamp(f"{y}-01-01") for y in unique_years]
-
+        
         dynamic_risk_chart = (
             alt.Chart(vol_melted)
             .mark_line(strokeWidth=2)
             .encode(
-                x=alt.X(
-                    "Date:T",
-                    axis=alt.Axis(
-                        title="Year",
-                        format="%Y",
-                        values=tick_values,
-                        grid=True
-                    )
-                ),
-                y=alt.Y(
-                    "Volatility:Q",
-                    axis=alt.Axis(format="%", title="Annualised volatility"),
-                ),
-                color=alt.Color(
-                    "Series:N",
-                    legend=alt.Legend(title="Series"),
-                    scale=alt.Scale(scheme="tableau10")
-                ),
-                tooltip=[
-                    alt.Tooltip("Date:T", format="%b %Y"),
-                    "Series:N",
-                    alt.Tooltip("Volatility:Q", format=".2%"),
-                ],
+                x=alt.X("Date:T", axis=alt.Axis(title="Date", format="%Y")),
+                y=alt.Y("Volatility:Q", axis=alt.Axis(format="%", title="Annualised volatility")),
+                color=alt.Color("Series:N", legend=alt.Legend(title="Series")),
+                tooltip=[alt.Tooltip("Date:T", format="%b %Y"), "Series:N", alt.Tooltip("Volatility:Q", format=".1%")]
             )
             .properties(height=350)
             .interactive()
         )
-
         st.altair_chart(dynamic_risk_chart, use_container_width=True)
-        st.caption("The portfolio's rolling volatility is compared against the riskiest underlying asset over the same period.")
+        st.caption(f"Rolling volatility (window ~ {effective_window} periods) compared against the riskiest underlying asset.")
+
     else:
         st.info("Graphique non disponible pour ces paramètres.")
 
