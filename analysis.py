@@ -392,8 +392,7 @@ with st.spinner("Fetching data and optimizing..."):
         st.error("Please select at least 2 assets in the chosen asset classes.")
         st.stop()
 
-    # 2. Charger les donnГ©es
-    # FIX: Unpack 'price_start_date_str' (4th variable) instead of ignoring it with '_'
+    # 2. Charger les données
     returns_df, mu, Sigma, price_start_date_str, date_warning = load_data(
         filtered_tickers,
         start_date,
@@ -403,6 +402,11 @@ with st.spinner("Fetching data and optimizing..."):
     if returns_df is None:
         st.error("Could not download data. Please check tickers.")
         st.stop()
+
+    # --- FIX START: SYNC TICKERS WITH DATA ---
+    # Update the list to match what was actually downloaded
+    filtered_tickers = returns_df.columns.tolist()
+    # --- FIX END -----------------------------
 
     if date_warning:
         st.warning(date_warning)
