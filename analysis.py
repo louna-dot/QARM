@@ -107,7 +107,7 @@ def get_asset_currency(tickers):
     return currencies
 
 @st.cache_data
-def load_data(tickers, start_date, rebalance_freq="M"):
+def load_data(tickers, start_date, rebalance_freq="ME"):
     end_date = datetime.now().strftime('%Y-%m-%d')
 
     try:
@@ -334,7 +334,7 @@ with st.sidebar.expander("🛠️ Portfolio & Data Settings", expanded=True):
         options=["Monthly", "Quarterly", "Yearly"],
         index=0
     )
-    rebalance_map = {"Monthly": "M", "Quarterly": "Q", "Yearly": "Y"}
+    rebalance_map = {"Monthly": "ME", "Quarterly": "QE", "Yearly": "YE"}
     rebalance_freq = rebalance_map[rebalance_label]
 
     # Horizon → période de backtest
@@ -973,11 +973,11 @@ with tab4:
 
     if returns_df is not None and not returns_df.empty:
         # FIX: Dynamic frequency handling
-        ann_factor_map = {"M": 12, "Q": 4, "Y": 1}
+        ann_factor_map = {"ME": 12, "QE": 4, "YE": 1}
         freq_factor = ann_factor_map.get(rebalance_freq, 12)
         
         # Adjust effective window logic based on frequency
-        if rebalance_freq == "Y":
+        if rebalance_freq == "YE":
             # FIX: Use np.ceil so 13 months snaps to 2 years immediately.
             # This ensures the graph updates when moving the slider, rather than waiting for 36.
             years_val = np.ceil(window / 12)
@@ -986,7 +986,7 @@ with tab4:
                 f"в„№пёЏ **Yearly Mode:** Slider snaps to nearest full year to ensure sufficient data points. "
                 f"Effective window: {effective_window} Year(s)."
             )
-        elif rebalance_freq == "Q":
+        elif rebalance_freq == "QE":
             effective_window = max(2, int(np.ceil(window / 3)))
         else:
             effective_window = window
